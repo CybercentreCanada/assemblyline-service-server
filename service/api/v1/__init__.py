@@ -10,7 +10,7 @@ apiv1._doc = "Version 1 Api Documentation"
 #####################################
 # API DOCUMENTATION
 # noinspection PyProtectedMember,PyBroadException
-@apiv1.route("/")
+@apiv1.route("/", methods=["GET"])
 def get_api_documentation(**_):
     """
     Full API doc.
@@ -35,7 +35,7 @@ def get_api_documentation(**_):
       'methods': ["GET", "POST"],       # Allowed HTTP methods
       'description': "API doc.",        # API documentation
       'id': "api_doc",                  # Unique ID for the API
-      'function': "apiv3.api_doc",      # Function called in the code
+      'function': "apiv1.api_doc",      # Function called in the code
       'complete' : True},               # Is the API stable?
       ...]
     """
