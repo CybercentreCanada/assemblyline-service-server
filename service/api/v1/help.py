@@ -1,9 +1,6 @@
-import re
-
-from json import dumps
 
 from assemblyline.common import forge
-from service.api.base import make_api_response, make_subapi_blueprint, PythonObjectEncoder
+from service.api.base import make_api_response, make_subapi_blueprint
 from service.config import STORAGE
 
 
@@ -15,7 +12,7 @@ help_api = make_subapi_blueprint(SUB_API)
 help_api._doc = "Provide information about the system configuration"
 
 
-@help_api.route("/classification_definition/")
+@help_api.route("/classification_definition/", methods=["GET"])
 def get_classification_definition(**_):
     """
     Return the current system classification definition
@@ -32,11 +29,10 @@ def get_classification_definition(**_):
     Result example:
     A parsed classification definition. (This is more for internal use)
     """
-    resp = forge.get_classification().get_parsed_classification_definition()
-    return dumps(resp, cls=PythonObjectEncoder)
+    return make_api_response(forge.get_classification().__dict__['original_definition'])
 
 
-@help_api.route("/configuration/")
+@help_api.route("/configuration/", methods=["GET"])
 def get_system_configuration(**_):
     """
     Return the current system configuration:
@@ -70,7 +66,7 @@ def get_system_configuration(**_):
     cat_map = {}
     stg_map = {}
 
-    for srv in STORAGE.list_services():
+    for srv in STORAGE.list_all_services(as_obj=False):
         name = srv.get('name', None)
         cat = srv.get('category', None)
         if cat and name:
@@ -111,14 +107,13 @@ def get_system_configuration(**_):
     return make_api_response(out)
 
 
-@help_api.route("/constants/")
+@help_api.route("/constants/", methods=["GET"])
 def get_systems_constants(**_):
     """
     Return the current system configuration constants which includes:
-        * Priorities
-        * File types
-        * Service tag types
         * Service tag contexts
+        * Service tag types
+        * File summary tags
 
     Variables:
     None
@@ -131,40 +126,15 @@ def get_systems_constants(**_):
 
     Result example:
     {
-        "priorities": {},
-        "file_types": [],
-        "tag_types": [],
-        "tag_contexts": []
+        "STANDARD_TAG_CONTEXTS": [],
+        "STANDARD_TAG_TYPES": [],
+        "FILE_SUMMARY": []
     }
     """
-    # TODO: can those default be pulled from the alv4_service repo? That would make it a dependency but that ok.
-    default_accept = ".*"
-    default_reject = "empty"
-
-    accepts_map = {}
-    rejects_map = {}
-    default_list = []
-
-    for srv in STORAGE.list_services():
-        name = srv.get('name', None)
-        if name:
-            accept = srv.get('accepts', default_accept)
-            reject = srv.get('rejects', default_reject)
-            if accept == default_accept and reject == default_reject:
-                default_list.append(name)
-            else:
-                accepts_map[name] = re.compile(accept)
-                rejects_map[name] = re.compile(reject)
-
     out = {
-        "priorities": constants.PRIORITIES,
-        "file_types": [[t,
-                        sorted([x for x in accepts_map.keys()
-                                if re.match(accepts_map[x], t) and not re.match(rejects_map[x], t)])]
-                       for t in sorted(constants.RECOGNIZED_TAGS.keys())],
-        "tag_types": sorted([x[0] for x in constants.STANDARD_TAG_TYPES]),
-        "tag_contexts": sorted([x[0] for x in constants.STANDARD_TAG_CONTEXTS])
+        "STANDARD_TAG_CONTEXTS": constants.STANDARD_TAG_CONTEXTS,
+        "STANDARD_TAG_TYPES": constants.STANDARD_TAG_TYPES,
+        "FILE_SUMMARY": constants.FILE_SUMMARY
     }
-    out['file_types'].insert(0, ["*", default_list])
 
     return make_api_response(out)
