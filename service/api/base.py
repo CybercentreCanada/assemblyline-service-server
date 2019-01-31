@@ -2,9 +2,6 @@
 from flask import abort, current_app, Blueprint, jsonify, make_response, request, session as flsk_session, Response
 from sys import exc_info
 from traceback import format_tb
-from base64 import b64encode
-from json import JSONEncoder
-import pickle
 
 from assemblyline.common.str_utils import safe_str
 from service.config import BUILD_LOWER, BUILD_MASTER, BUILD_NO, RATE_LIMITER
@@ -16,13 +13,6 @@ api = Blueprint("api", __name__, url_prefix=API_PREFIX)
 def make_subapi_blueprint(name, api_version=1):
     """ Create a flask Blueprint for a subapi in a standard way. """
     return Blueprint(f"apiv{api_version}.{name}", name, url_prefix='/'.join([API_PREFIX, f"v{api_version}", name]))
-
-
-class PythonObjectEncoder(JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, (list, dict, str, int, float, bool, type(None))):
-            return super().default(obj)
-        return {'_python_object': b64encode(pickle.dumps(obj)).decode('utf-8')}
 
 
 ####################################
