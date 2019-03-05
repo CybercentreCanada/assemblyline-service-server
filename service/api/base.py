@@ -1,10 +1,10 @@
 
-from flask import abort, current_app, Blueprint, jsonify, make_response, request, session as flsk_session, Response
+from flask import abort, current_app, Blueprint, jsonify, make_response, request, Response
 from sys import exc_info
 from traceback import format_tb
 
 from assemblyline.common.str_utils import safe_str
-from service.config import BUILD_LOWER, BUILD_MASTER, BUILD_NO, RATE_LIMITER
+from service.config import BUILD_LOWER, BUILD_MASTER, BUILD_NO
 
 API_PREFIX = "/api"
 api = Blueprint("api", __name__, url_prefix=API_PREFIX)
@@ -37,13 +37,6 @@ def make_api_response(data, err="", status_code=200, cookies=None):
 
 
 def make_file_response(data, name, size, status_code=200, content_type="application/octet-stream"):
-    quota_user = flsk_session.pop("quota_user", None)
-    quota_id = flsk_session.pop("quota_id", None)
-    quota_set = flsk_session.pop("quota_set", False)
-    if quota_user and quota_set:
-        RATE_LIMITER.dec(quota_user, track_id=quota_id)
-        RATE_LIMITER.dec("__global__", track_id=quota_id)
-
     response = make_response(data, status_code)
     response.headers["Content-Type"] = content_type
     response.headers["Content-Length"] = size
@@ -52,13 +45,6 @@ def make_file_response(data, name, size, status_code=200, content_type="applicat
 
 
 def stream_file_response(reader, name, size, status_code=200):
-    quota_user = flsk_session.pop("quota_user", None)
-    quota_id = flsk_session.pop("quota_id", None)
-    quota_set = flsk_session.pop("quota_set", False)
-    if quota_user and quota_set:
-        RATE_LIMITER.dec(quota_user, track_id=quota_id)
-        RATE_LIMITER.dec("__global__", track_id=quota_id)
-
     chunk_size = 65535
 
     def generate():
@@ -75,14 +61,20 @@ def stream_file_response(reader, name, size, status_code=200):
     return Response(generate(), status=status_code, headers=headers)
 
 
-def make_binary_response(data, size, status_code=200):
-    quota_user = flsk_session.pop("quota_user", None)
-    quota_id = flsk_session.pop("quota_id", None)
-    quota_set = flsk_session.pop("quota_set", False)
-    if quota_user and quota_set:
-        RATE_LIMITER.dec(quota_user, track_id=quota_id)
-        RATE_LIMITER.dec("__global__", track_id=quota_id)
+def stream_multipart_response(reader, status_code=200):
+    chunk_size = 65535
 
+    def generate():
+        while True:
+            data = reader.read(chunk_size)
+            if not data:
+                break
+            yield data
+
+    return Response(generate(), status=status_code, content_type=reader.content_type, headers={"Content-Length": reader.len})
+
+
+def make_binary_response(data, size, status_code=200):
     response = make_response(data, status_code)
     response.headers["Content-Type"] = 'application/octet-stream'
     response.headers["Content-Length"] = size
@@ -90,13 +82,6 @@ def make_binary_response(data, size, status_code=200):
 
 
 def stream_binary_response(reader, status_code=200):
-    quota_user = flsk_session.pop("quota_user", None)
-    quota_id = flsk_session.pop("quota_id", None)
-    quota_set = flsk_session.pop("quota_set", False)
-    if quota_user and quota_set:
-        RATE_LIMITER.dec(quota_user, track_id=quota_id)
-        RATE_LIMITER.dec("__global__", track_id=quota_id)
-
     chunk_size = 4096
 
     def generate():
