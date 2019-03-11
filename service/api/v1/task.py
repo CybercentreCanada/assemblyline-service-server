@@ -1,6 +1,6 @@
 import os
 import json
-import cgi
+import tempfile
 
 from flask import request
 from requests_toolbelt import MultipartEncoder
@@ -33,8 +33,30 @@ def done_task(**_):
     Result example:
     A parsed classification definition.
     """
-    for filename, file in request.files.items():
-        file.save(os.path.join('/home/ubuntu', request.files[filename].filename))
+    # Download the results json
+    if 'result_json' in request.files:
+        results = json.loads(request.files['result_json'].read())
+        service_name = results['response']['service_name']
+        temp_dir = os.path.join(tempfile.gettempdir(), 'al', service_name)
+        path = os.path.join(temp_dir, 'results.json')
+        with open(path, 'wb') as f:
+            f.write(request.files['result_json'].read())
+            f.close()
+        try:
+            Result(results)
+            msg = 'success'
+        except Exception as e:
+            msg = e
+    else:
+        return make_api_response("", "Results JSON not found", 403)
+
+    # Download the extracted and supplementary files
+    for files in (results['response']['extracted'], results['response']['supplementary']):
+        for file in files:
+            path = os.path.join(temp_dir, file['sha256'])
+            with open(path, 'wb') as f:
+                f.write(request.files[file['sha256']].read())
+                f.close()
 
     return make_api_response(str(msg))
 
