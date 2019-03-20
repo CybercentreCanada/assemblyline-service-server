@@ -27,6 +27,5 @@ RATE_LIMITER = Counters(prefix="quota",
 # Global instances
 STORAGE = forge.get_datastore()
 
-DN_PARSER = forge.get_dn_parser()
 # End global
 #################################################################
