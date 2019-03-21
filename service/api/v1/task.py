@@ -13,6 +13,7 @@ from assemblyline.odm.models.file import File
 from service.api.base import make_api_response, make_subapi_blueprint, stream_file_response, stream_multipart_response
 
 from assemblyline.common import forge
+from assemblyline.common import identify
 from assemblyline.remote.datatypes.queues.named import NamedQueue, select
 from assemblyline.odm.messages.task import Task as ServiceTask
 from assemblyline.common.isotime import now_as_iso
@@ -58,8 +59,11 @@ def done_task(**_):
 
             for f in new_files:
                 if not datastore.file.get(f.sha256):
-                    file = File(task.fileinfo.as_primitives())
-                    file.expiry_ts = expiry_ts
+                    file_path = os.path.join(temp_dir, f.sha256)
+                    file_info = identify.fileinfo(file_path)
+                    file_info['classification'] = result.classification
+                    file_info['expiry_ts'] = expiry_ts
+                    file = File(file_info)
                     datastore.file.save(f.sha256, file)
                 if not filestore.exists(f.sha256):
                     file = os.path.join(temp_dir, f.sha256)

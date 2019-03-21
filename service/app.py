@@ -10,6 +10,7 @@ from service.api.v1.identify import identify_api
 from service.api.v1.task import task_api
 
 app = Flask("alsvc")
+app.logger.setLevel(60)  # This completely turns off the flask logger
 
 app.register_blueprint(api)
 app.register_blueprint(apiv1)
@@ -21,10 +22,6 @@ app.register_blueprint(task_api)
 
 def main():
     app.logger.setLevel(logging.INFO)
-    # if config.PROFILE:
-    #     from werkzeug.contrib.profiler import ProfilerMiddleware
-    #     app.wsgi_app = ProfilerMiddleware(app.wsgi_app, restrictions=[30])
-    print(app.url_map)
     app.jinja_env.cache = {}
     app.run(host="0.0.0.0", port=5003, debug=False)
 
