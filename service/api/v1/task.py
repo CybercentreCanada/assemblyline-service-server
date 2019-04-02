@@ -133,8 +133,7 @@ def get_task(**_):
         if not result:
             task_json = json.dumps(task.as_primitives())
 
-            fields = {}
-            fields['task_json'] = ("task.json", task_json, 'application/json')
+            fields = {'task_json': ("task.json", task_json, 'application/json')}
 
             if file_required:
                 file = filestore.get(task.fileinfo.sha256)  # TODO: instead of get file, do download file temporarily and then get path and then read file content 'open(file, 'rb')'
