@@ -30,7 +30,7 @@ def fileinfo(**_):
     {"success": true }    # Info message logged successfully
     """
 
-    # out_dir = os.path.join(TEMP_SUBMIT_DIR, uuid4().get_hex())
+    # out_dir = os.path.join(TEMP_SUBMIT_DIR, baseconv.base62.encode(uuid.uuid4().int))
     data = request.json
     if not data:
         return make_api_response({}, "Missing data block", 400)
