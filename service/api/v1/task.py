@@ -1,33 +1,33 @@
-import os
-import json
-import tempfile
 import hashlib
+import json
+import os
 import shutil
+import tempfile
 
 from flask import request
 from requests_toolbelt import MultipartEncoder
 
-from assemblyline.odm.messages.task import Task
-from assemblyline.odm.models.result import Result
-from assemblyline.odm.models.file import File
-from service.api.base import make_api_response, make_subapi_blueprint, stream_file_response, stream_multipart_response
-
-from assemblyline.common import forge
-from assemblyline.common import identify
-from assemblyline.remote.datatypes.queues.named import NamedQueue, select
-from assemblyline.odm.messages.task import Task as ServiceTask
-from assemblyline.common.isotime import now_as_iso
 from al_core.dispatching.client import DispatchClient
 from al_core.dispatching.dispatcher import service_queue_name
+from assemblyline.common import forge
+from assemblyline.common import identify
+from assemblyline.common.isotime import now_as_iso
+from assemblyline.common.metrics import MetricsFactory
+from assemblyline.odm.messages.task import Task
+from assemblyline.odm.models.file import File
+from assemblyline.odm.models.result import Result
+from assemblyline.remote.datatypes.queues.named import NamedQueue, select
+from service.api.base import make_api_response, make_subapi_blueprint, stream_file_response, stream_multipart_response
 
 SUB_API = 'task'
 
 task_api = make_subapi_blueprint(SUB_API)
 task_api._doc = "Task manager"
 
+config = forge.get_config()
 datastore = forge.get_datastore()
 filestore = forge.get_filestore()
-config = forge.get_config()
+
 dispatch_client = DispatchClient(datastore)
 
 
@@ -41,6 +41,14 @@ def done_task(**_):
 
     expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
     result.expiry_ts = expiry_ts
+
+    # Metrics
+    counter = MetricsFactory('service', name=task.service_name, config=config)
+    if result.result.score > 0:
+        counter.increment('scored')
+    else:
+        counter.increment('not_scored')
+
     temp_dir = None
     try:
         new_files = result.response.extracted + result.response.supplementary
@@ -111,14 +119,16 @@ def get_task(**_):
     service_tool_version = data['service_tool_version']
 
     queue = [NamedQueue(service_queue_name(service_name))]
+    counter = MetricsFactory('service', name=service_name, config=config)
 
     while True:
         message = select(*queue, timeout=1)
         if not message:
             continue  # No task in queue
 
+        counter.increment('execute')
         queue, msg = message
-        task = ServiceTask(msg)
+        task = Task(msg)
 
         service_tool_version_hash = hashlib.md5((service_tool_version.encode('utf-8'))).hexdigest()
         task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
@@ -129,14 +139,15 @@ def get_task(**_):
                                            service_version=service_version,
                                            conf_key=conf_key)
 
-        result = datastore.result.get(result_key)
+        result = datastore.result.get_if_exists(result_key)
         if not result:
+            counter.increment('cache_miss')
             task_json = json.dumps(task.as_primitives())
 
             fields = {'task_json': ("task.json", task_json, 'application/json')}
 
             if file_required:
-                file = filestore.get(task.fileinfo.sha256)  # TODO: instead of get file, do download file temporarily and then get path and then read file content 'open(file, 'rb')'
+                file = filestore.get(task.fileinfo.sha256)
                 fields['file'] = (task.fileinfo.sha256, file, task.fileinfo.mime)
 
             m = MultipartEncoder(fields=fields)
