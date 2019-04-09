@@ -139,7 +139,7 @@ def get_task(**_):
                                            service_version=service_version,
                                            conf_key=conf_key)
 
-        result = datastore.result.get(result_key)
+        result = datastore.result.get_if_exists(result_key)
         if not result:
             counter.increment('cache_miss')
             task_json = json.dumps(task.as_primitives())
