@@ -2,10 +2,13 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import tempfile
+import traceback
 
 from flask import request
 from requests_toolbelt import MultipartEncoder
+from werkzeug.datastructures import FileStorage
 
 from al_core.dispatching.client import DispatchClient
 from al_core.dispatching.dispatcher import service_queue_name
@@ -14,7 +17,6 @@ from assemblyline.common import identify
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.common.metrics import MetricsFactory
 from assemblyline.odm.messages.task import Task
-from assemblyline.odm.models.file import File
 from assemblyline.odm.models.result import Result
 from assemblyline.remote.datatypes.queues.named import NamedQueue, select
 from service.api.base import make_api_response, make_subapi_blueprint, stream_file_response, stream_multipart_response
@@ -61,18 +63,15 @@ def done_task(**_):
             # Download the extracted and supplementary files to temp dir
             for f in new_files:
                 path = os.path.join(temp_dir, f.sha256)
-                with open(path, 'wb') as file:
-                    file.write(request.files[f.sha256].read())
-                    file.close()
+                FileStorage(request.files[f.sha256]).save(path)
 
             for f in new_files:
-                if not datastore.file.get(f.sha256):
-                    file_path = os.path.join(temp_dir, f.sha256)
-                    file_info = identify.fileinfo(file_path)
-                    file_info['classification'] = result.classification
-                    file_info['expiry_ts'] = expiry_ts
-                    file = File(file_info)
-                    datastore.file.save(f.sha256, file)
+                file_path = os.path.join(temp_dir, f.sha256)
+                file_info = identify.fileinfo(file_path)
+                file_info['classification'] = result.classification
+                file_info['expiry_ts'] = expiry_ts
+                datastore.save_or_freshen_file(f.sha256, file_info, file_info['expiry_ts'], file_info['classification'])
+
                 if not filestore.exists(f.sha256):
                     file = os.path.join(temp_dir, f.sha256)
                     filestore.upload(file, f.sha256)
@@ -85,8 +84,10 @@ def done_task(**_):
         result.expiry_ts = expiry_ts
         dispatch_client.service_finished(task.sid, result_key, result)
         msg = 'success'
-    except Exception as e:
-        msg = str(e)
+    except Exception:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        msg = repr(traceback.format_exception(exc_type, exc_value,
+                                              exc_traceback))
     finally:
         if temp_dir:
             shutil.rmtree(temp_dir)
