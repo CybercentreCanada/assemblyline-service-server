@@ -1,11 +1,9 @@
 import logging
-import os
 
-from assemblyline.common import version
-from assemblyline.common.logformat import AL_LOG_FORMAT
 from assemblyline.common import forge
-from assemblyline.remote.datatypes.counters import Counters
 from assemblyline.common import log as al_log
+from assemblyline.common import version
+from assemblyline.remote.datatypes.counters import Counters
 
 config = forge.get_config()
     
@@ -29,7 +27,6 @@ RATE_LIMITER = Counters(prefix="quota",
 
 #################################################################
 # Prepare loggers
-DEBUG = True
 config.logging.log_to_console = config.logging.log_to_console or DEBUG
 al_log.init_logging("alsvc", config=config, log_level=logging.DEBUG if DEBUG else logging.INFO)
 
