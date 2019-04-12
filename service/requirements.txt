@@ -1,2 +1,6 @@
-flask
 requests_toolbelt
+python-socketio<4
+flask
+flask-socketio
+gevent
+gevent-websocket
