@@ -112,9 +112,17 @@ class TaskingNamespace(Namespace):
             LOGGER.info(f"SocketIO:{self.namespace} - No more clients connected to service "
                         f"{service_name} queue, exiting thread...")
 
-    def on_got_task(self):
+    def on_done_task(self, service_name, exec_time):
+        counter_timing = MetricsFactory('service', name=service_name, config=config)
+        counter_timing.increment_execution_time('execution', exec_time)
         client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Client received the task and started processing")
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Client completed the {service_name} task in {exec_time}ms")
+
+    def on_got_task(self, service_name, idle_time):
+        counter_timing = MetricsFactory('service', name=service_name, config=config)
+        counter_timing.increment_execution_time('idle', idle_time)
+        client_id = get_request_id(request)
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Client was idle for {idle_time}ms and received the {service_name} task and started processing")
         self._deactivate_client(client_id)
 
     def on_wait_for_task(self, service_name, service_version, service_tool_version):
@@ -128,6 +136,7 @@ class TaskingNamespace(Namespace):
 
         self.socketio.start_background_task(target=self.get_task_for_service, service_name=service_name, service_version=service_version, service_tool_version=service_tool_version)
         emit('wait_for_task', (service_name, service_version))
+
 
 def get_request_id(request_p):
     if hasattr(request_p, "sid"):
