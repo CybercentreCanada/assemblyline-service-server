@@ -1,12 +1,25 @@
+import hashlib
+import json
 import random
 import threading
 
 from flask import request
-from flask_socketio import emit, Namespace
+from flask_socketio import Namespace, emit
 
+from al_core.dispatching.client import DispatchClient
 from al_core.dispatching.dispatcher import service_queue_name
-from service.config import LOGGER
+from assemblyline.common import forge
+from assemblyline.common.metrics import MetricsFactory
+from assemblyline.odm.models.result import Result
+from assemblyline.odm.messages.task import Task
 from assemblyline.remote.datatypes.queues.named import NamedQueue
+from service.config import LOGGER
+
+config = forge.get_config()
+datastore = forge.get_datastore()
+filestore = forge.get_filestore()
+
+dispatch_client = DispatchClient(datastore)
 
 
 class TaskingNamespace(Namespace):
@@ -27,11 +40,10 @@ class TaskingNamespace(Namespace):
                     self.client_map[svc_name].remove(client_id)
                     LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Done waiting for {svc_name} tasks")
 
-
     def on_connect(self):
         client_id = get_request_id(request)
         ip = request.headers.get("X-Forward-For", request.remote_addr)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - New connection establish from: {ip}")
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - New connection established from: {ip}")
 
     def on_disconnect(self):
         ip = request.headers.get("X-Forward-For", request.remote_addr)
@@ -41,34 +53,55 @@ class TaskingNamespace(Namespace):
         LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Disconnected from: {ip}")
 
     # noinspection PyBroadException
-    def get_task_for_service(self, service_name):
+    def get_task_for_service(self, service_name, service_version, service_tool_version):
         with self.connections_lock:
             if service_name in self.watch_threads:
                 return
             self.watch_threads.add(service_name)
 
         LOGGER.info(f"SocketIO:{self.namespace} - Starting to monitor {service_name} queue for new tasks")
-        q = NamedQueue(service_queue_name(service_name), private=True)
+        queue = NamedQueue(service_queue_name(service_name), private=True)
+        counter = MetricsFactory('service', name=service_name, config=config)
+
         try:
             while True:
-                task = q.pop(timeout=1)
+                task = queue.pop(timeout=1)
                 with self.connections_lock:
                     clients = list(set(self.client_map.get(service_name, [])).difference(set(self.banned_clients)))
                     if len(clients) == 0:
                         # We have no more client, put the task back and quit...
                         if task:
-                            q.push(task)
+                            queue.push(task)
                         break
 
                 if not task:
                     continue
 
-                client_id = random.choice(clients)
-                self.socketio.emit("got_task", task, namespace=self.namespace, room=client_id)
-                with self.connections_lock:
-                    self.banned_clients.append(client_id)
+                task = Task(task)
+                counter.increment('execute')
 
-                LOGGER.info(f"SocketIO:{self.namespace} - Sending {service_name} task to client {client_id}")
+                service_tool_version_hash = hashlib.md5((service_tool_version.encode('utf-8'))).hexdigest()
+                task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
+                conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
+
+                result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
+                                                   service_name=service_name,
+                                                   service_version=service_version,
+                                                   conf_key=conf_key)
+
+                result = datastore.result.get_if_exists(result_key)
+                if not result:
+                    counter.increment('cache_miss')
+
+                    client_id = random.choice(clients)
+                    self.socketio.emit("got_task", task.as_primitives(), namespace=self.namespace, room=client_id)
+                    with self.connections_lock:
+                        self.banned_clients.append(client_id)
+
+                    dispatch_client.running_tasks.set(task.key(), task.as_primitives())
+                    LOGGER.info(f"SocketIO:{self.namespace} - Sending {service_name} task to client {client_id}")
+                else:
+                    dispatch_client.service_finished(task.sid, result_key, result)
 
         except Exception:
             LOGGER.exception(f"SocketIO:{self.namespace}")
@@ -84,17 +117,17 @@ class TaskingNamespace(Namespace):
         LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Client received the task and started processing")
         self._deactivate_client(client_id)
 
-    def on_wait_for_task(self, service_name, version):
+    def on_wait_for_task(self, service_name, service_version, service_tool_version):
         client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Waiting tasks in {service_name}[{version}] queue...")
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Waiting for tasks in {service_name}[{service_version}] queue...")
 
         with self.connections_lock:
             if service_name not in self.client_map:
                 self.client_map[service_name] = []
             self.client_map[service_name].append(client_id)
 
-        self.socketio.start_background_task(target=self.get_task_for_service, service_name=service_name)
-        emit('wait_for_task', (service_name, version))
+        self.socketio.start_background_task(target=self.get_task_for_service, service_name=service_name, service_version=service_version, service_tool_version=service_tool_version)
+        emit('wait_for_task', (service_name, service_version))
 
 def get_request_id(request_p):
     if hasattr(request_p, "sid"):

@@ -19,7 +19,7 @@ from assemblyline.common.metrics import MetricsFactory
 from assemblyline.odm.messages.task import Task
 from assemblyline.odm.models.result import Result
 from assemblyline.remote.datatypes.queues.named import NamedQueue, select
-from service.api.base import make_api_response, make_subapi_blueprint, stream_file_response, stream_multipart_response
+from service.api.base import make_api_response, make_subapi_blueprint, stream_multipart_response
 
 SUB_API = 'task'
 
@@ -97,21 +97,13 @@ def done_task(**_):
 
 @task_api.route("/file/<sha256>/", methods=["GET"])
 def download_file(sha256, **_):
-    temp_dir = None
-    try:
-        temp_dir = os.path.join(tempfile.gettempdir(), 'al', sha256)
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
-        file_path = os.path.join(temp_dir, sha256)
-        filestore.download(sha256, file_path)
-        with open(file_path, 'rb') as file:
-            return stream_file_response(file, sha256, 12)
-    finally:
-        if temp_dir:
-            shutil.rmtree(temp_dir)
+    file = filestore.get(sha256)
+    fields = {'file': (sha256, file, 'application/text')}
+    m = MultipartEncoder(fields=fields)
+    return stream_multipart_response(m)
 
 
-@task_api.route("/get/", methods=["GET"])
+'''@task_api.route("/get/", methods=["GET"])
 def get_task(**_):
     data = request.json
     service_name = data['service_name']
@@ -155,4 +147,4 @@ def get_task(**_):
             dispatch_client.running_tasks.set(task.key(), task.as_primitives())
             return stream_multipart_response(m)
         else:
-            dispatch_client.service_finished(task.sid, result_key, result)
+            dispatch_client.service_finished(task.sid, result_key, result)'''
