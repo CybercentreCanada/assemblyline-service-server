@@ -9,9 +9,11 @@ from flask_socketio import Namespace, emit
 from al_core.dispatching.client import DispatchClient
 from al_core.dispatching.dispatcher import service_queue_name
 from assemblyline.common import forge
+from assemblyline.common.isotime import now_as_iso
 from assemblyline.common.metrics import MetricsFactory
-from assemblyline.odm.models.result import Result
 from assemblyline.odm.messages.task import Task
+from assemblyline.odm.models.error import Error
+from assemblyline.odm.models.result import Result
 from assemblyline.remote.datatypes.queues.named import NamedQueue
 from service.config import LOGGER
 
@@ -112,11 +114,50 @@ class TaskingNamespace(Namespace):
             LOGGER.info(f"SocketIO:{self.namespace} - No more clients connected to service "
                         f"{service_name} queue, exiting thread...")
 
-    def on_done_task(self, service_name, exec_time):
-        counter_timing = MetricsFactory('service', name=service_name, config=config)
-        counter_timing.increment_execution_time('execution', exec_time)
+    def on_done_task(self, service_name, exec_time, task, result):
         client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Client completed the {service_name} task in {exec_time}ms")
+        counter = MetricsFactory('service', name=service_name, config=config)
+        counter_timing = MetricsFactory('service', name=service_name, config=config)
+
+        task = Task(task)
+        expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
+        result['expiry_ts'] = expiry_ts
+
+        if 'result' in result:  # Task completed successfully
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Client successfully completed the {service_name} task in {exec_time}ms")
+
+            result = Result(result)
+
+            service_tool_version_hash = hashlib.md5((result.response.service_tool_version.encode('utf-8'))).hexdigest()
+            task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
+            conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
+            result_key = result.build_key(conf_key)
+            dispatch_client.service_finished(task.sid, result_key, result)
+
+            # Metrics
+            if result.result.score > 0:
+                counter.increment('scored')
+            else:
+                counter.increment('not_scored')
+        else:  # Task failed
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Client failed to complete the {service_name} task in {exec_time}ms")
+
+            error = Error(result)
+
+            service_tool_version_hash = hashlib.md5((error.response.service_tool_version.encode('utf-8'))).hexdigest()
+            task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
+            conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
+
+            error_key = error.build_key(conf_key)
+            dispatch_client.service_failed(task.sid, error_key, error)
+
+            # Metrics
+            if error.response.status == "FAIL_RECOVERABLE":
+                counter.increment('fail_recoverable')
+            else:
+                counter.increment('fail_nonrecoverable')
+
+        counter_timing.increment_execution_time('execution', exec_time)
 
     def on_got_task(self, service_name, idle_time):
         counter_timing = MetricsFactory('service', name=service_name, config=config)
@@ -135,7 +176,7 @@ class TaskingNamespace(Namespace):
             self.client_map[service_name].append(client_id)
 
         self.socketio.start_background_task(target=self.get_task_for_service, service_name=service_name, service_version=service_version, service_tool_version=service_tool_version)
-        emit('wait_for_task', (service_name, service_version))
+        self.socketio.emit("wait_for_task", namespace=self.namespace, room=client_id)
 
 
 def get_request_id(request_p):
