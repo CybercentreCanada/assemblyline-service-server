@@ -15,6 +15,7 @@ from service.api.base import api
 from service.api.v1 import apiv1
 from service.api.v1.file import file_api
 from service.api.v1.help import help_api
+from service.sio.files import FilesNamespace
 from service.sio.tasking import TaskingNamespace
 
 app = Flask("alsvc")
@@ -25,9 +26,11 @@ app.register_blueprint(apiv1)
 app.register_blueprint(file_api)
 app.register_blueprint(help_api)
 socketio = SocketIO(app, async_mode="gevent" if not config.DEBUG else "threading")
-socketio.on_namespace(TaskingNamespace('/tasking'))
+socketio.on_namespace(TaskingNamespace('/files'))
+socketio.on_namespace(FilesNamespace('/tasking'))
 
 config.LOGGER.info("Service server API ready for connections...")
+
 
 def main():
     wlog = logging.getLogger('werkzeug')
