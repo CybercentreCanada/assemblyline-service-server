@@ -36,15 +36,16 @@ def download_file(sha256, **_):
 
 @file_api.route("/save/", methods=["GET"])
 def save_file(**_):
-    # Load the Task and Result
-    task = Task(json.loads(request.files['task_json'].read()))
-    result_json = json.loads(request.files['result_json'].read())
-    result = Result(result_json)
-
-    expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
 
     temp_dir = None
     try:
+        # Load the Task and Result
+        task = Task(json.loads(request.files['task_json'].read()))
+        result_json = json.loads(request.files['result_json'].read())
+        result = Result(result_json)
+
+        expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
+
         new_files = result.response.extracted + result.response.supplementary
         if new_files:
             # Create temp dir for downloading the files

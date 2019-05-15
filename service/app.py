@@ -26,8 +26,8 @@ app.register_blueprint(apiv1)
 app.register_blueprint(file_api)
 app.register_blueprint(help_api)
 socketio = SocketIO(app, async_mode="gevent" if not config.DEBUG else "threading")
-socketio.on_namespace(TaskingNamespace('/files'))
-socketio.on_namespace(FilesNamespace('/tasking'))
+socketio.on_namespace(FilesNamespace('/files'))
+socketio.on_namespace(TaskingNamespace('/tasking'))
 
 config.LOGGER.info("Service server API ready for connections...")
 
