@@ -44,11 +44,11 @@ class TaskingNamespace(Namespace):
 
     def on_connect(self):
         client_id = get_request_id(request)
-        ip = request.headers.get("X-Forward-For", request.remote_addr)
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
         LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - New connection established from: {ip}")
 
     def on_disconnect(self):
-        ip = request.headers.get("X-Forward-For", request.remote_addr)
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
         client_id = get_request_id(request)
         self._deactivate_client(client_id)
 
