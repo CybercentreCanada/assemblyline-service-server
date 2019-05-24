@@ -4,7 +4,7 @@ import random
 import threading
 
 from flask import request
-from flask_socketio import Namespace, emit
+from flask_socketio import Namespace
 
 from al_core.dispatching.client import DispatchClient
 from al_core.dispatching.dispatcher import service_queue_name
@@ -42,7 +42,7 @@ class TaskingNamespace(Namespace):
                     self.client_map[svc_name].remove(client_id)
                     LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Done waiting for {svc_name} tasks")
 
-    def on_connect(self):
+    def on_service_client_connect(self):
         client_id = get_request_id(request)
         ip = request.headers.get("X-Forwarded-For", request.remote_addr)
         LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - New connection established from: {ip}")
@@ -53,6 +53,10 @@ class TaskingNamespace(Namespace):
         self._deactivate_client(client_id)
 
         LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Disconnected from: {ip}")
+
+    def default_error_handler(self, e):
+        LOGGER.info(f"Error: {str(e)}")
+        pass
 
     # noinspection PyBroadException
     def get_task_for_service(self, service_name, service_version, service_tool_version):
@@ -176,7 +180,7 @@ class TaskingNamespace(Namespace):
             self.client_map[service_name].append(client_id)
 
         self.socketio.start_background_task(target=self.get_task_for_service, service_name=service_name, service_version=service_version, service_tool_version=service_tool_version)
-        self.socketio.emit("wait_for_task", namespace=self.namespace, room=client_id)
+        self.socketio.emit('wait_for_task', client_id, namespace=self.namespace, room=client_id)
 
 
 def get_request_id(request_p):

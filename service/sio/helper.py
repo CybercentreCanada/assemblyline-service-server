@@ -46,14 +46,41 @@ class HelperNamespace(Namespace):
         client_id = get_request_id(request)
         LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Sending system constants to client")
 
-        out = {"FILE_SUMMARY": constants.FILE_SUMMARY,
-               "RECOGNIZED_TAGS": constants.RECOGNIZED_TAGS,
-               "RULE_PATH": constants.RULE_PATH,
-               "STANDARD_TAG_CONTEXTS": constants.STANDARD_TAG_CONTEXTS,
-               "STANDARD_TAG_TYPES": constants.STANDARD_TAG_TYPES
+        out = {'FILE_SUMMARY': constants.FILE_SUMMARY,
+               'RECOGNIZED_TAGS': constants.RECOGNIZED_TAGS,
+               'RULE_PATH': constants.RULE_PATH,
+               'STANDARD_TAG_CONTEXTS': constants.STANDARD_TAG_CONTEXTS,
+               'STANDARD_TAG_TYPES': constants.STANDARD_TAG_TYPES
                }
 
         return out, json_file
+
+    def on_start_download(self, sha256, file_path):
+        client_id = get_request_id(request)
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Sending file to client, SHA256: {sha256}")
+
+        temp_dir = os.path.join(tempfile.gettempdir(), sha256)
+        try:
+            if not os.path.exists(temp_dir):
+                os.makedirs(temp_dir)
+            temp_file_path = os.path.join(temp_dir, sha256)
+            filestore.download(sha256, temp_file_path)
+
+            offset = 0
+            chunk_size = 64*1024
+            with open(temp_file_path, 'rb') as f:
+                for chunk in read_in_chunks(f, chunk_size):
+                    self.socketio.emit('write_file_chunk', (file_path, offset, chunk), namespace=self.namespace, room=client_id)
+                    offset += chunk_size
+
+
+            # with open(file_path, 'rb') as f:
+            #     return f.read(), dest_path
+            # return filestore.get(sha256), dest_path
+        finally:
+            if temp_dir:
+                shutil.rmtree(temp_dir)
+
 
     def on_upload_file(self, data, classification, service_name, sha256, ttl):
         client_id = get_request_id(request)
@@ -83,3 +110,11 @@ def get_request_id(request_p):
     if hasattr(request_p, "sid"):
         return request_p.sid
     return None
+
+
+def read_in_chunks(file_object, chunk_size):
+    while True:
+        data = file_object.read(chunk_size)
+        if not data:
+            break
+        yield data
