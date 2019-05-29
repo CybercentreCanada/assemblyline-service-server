@@ -11,7 +11,7 @@ for variable_name in ['BITBUCKET_TAG']:
 
 
 setup(
-    name="assemblyline-service-api",
+    name="assemblyline-service-server",
     version=package_version,
     description="Assemblyline (v4) automated malware analysis framework - Service components.",
     long_description="This package provides the service components (APIs and SocketIO Server) for the Assemblyline v4 malware analysis framework.",
@@ -29,29 +29,15 @@ setup(
     keywords="assemblyline malware gc canada cse-cst cse cst cyber cccs",
     packages=find_packages(exclude=['test/*']),
     install_requires=[
-        'urllib3<1.25',
-        'python-baseconv',
-        'boto3',
-        'pysftp',
-        'netifaces',
-        'pyroute2',
-        'redis',
-        'requests',
-        'elasticsearch>=7.0.0,<8.0.0',
-        'python-datemath',
-        'arrow',
-        'packaging',
-        'tabulate',
-        'PyYAML',
-        'easydict',
-        'passlib',
-        'cart',
-        'ssdeep',
-        'python-magic',
-        'apscheduler',
-        'elastic-apm[flask]',
+        'assemblyline',
+        'assemblyline-core',
+        'werkzeug',
+        'flask',
+        'flask-socketio',
+        'gunicorn',
+        'gevent',
+        'gevent-websocket',
     ],
     package_data={
-        '': ["*schema.xml", "*managed-schema", "*solrconfig.xml", "*classification.yml", "*.magic"]
     }
 )

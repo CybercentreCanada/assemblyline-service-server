@@ -53,7 +53,7 @@ pipelines:
               - mkdir -p /var/cache/assemblyline/
               - cp test/bitbucket/config.yml /etc/assemblyline
               - pip install -r test/requirements.txt
-              - pytest -rsx -vv
+              #- pytest -rsx -vv
             caches: *caches
             services: *services
 #        - step:
@@ -88,8 +88,8 @@ pipelines:
             - export TAG=${BITBUCKET_TAG#v}
             - until pip install assemblyline== 2>&1 | grep -q $TAG; do sleep 2; done
             - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASSWORD
-            - docker build --build-arg version=$TAG -t cccs/assemblyline-service-api:$TAG -t cccs/assemblyline-service-api:latest .
-            - docker push cccs/assemblyline-service-api
+            - docker build --build-arg version=$TAG -t cccs/assemblyline-service-server:$TAG -t cccs/assemblyline-service-server:latest .
+            - docker push cccs/assemblyline-service-server
 definitions:
   services:
     elasticsearch:
