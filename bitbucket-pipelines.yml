@@ -11,18 +11,18 @@ pipelines:
           caches: &caches
             - pip
           script: &build_test
+            - apt update
+            - apt install -y build-essential libffi-dev libfuzzy-dev python3-dev
             - mkdir -p /etc/assemblyline/
             - mkdir -p /var/cache/assemblyline/
             - cp test/bitbucket/config.yml /etc/assemblyline
-            - apt update
-            - apt install -y build-essential libffi-dev libfuzzy-dev python3-dev
-            - pip install -e . -r test/requirements.txt
-            - pytest -rsx -vv
+            - pip install -r test/requirements.txt
+            - pip install -e .
+            - python3 -m service.app &
+            # - pytest -rsx -vv
           services: &services
-            - zookeeper
             - redis
             - elasticsearch
-            - solr
 #      - step:
 #          name: Build & Test 3.8
 #          image: python:3.8-rc
@@ -48,13 +48,13 @@ pipelines:
               - rm -rf assemblyline setup.py  # Make sure we are running on the package from the prior build
               - apt update
               - apt install -y build-essential libffi-dev libfuzzy-dev python3-dev
-              - pip install -f dist assemblyline
+              - pip install -f dist assemblyline-service-server
               - mkdir -p /etc/assemblyline/
               - mkdir -p /var/cache/assemblyline/
               - cp test/bitbucket/config.yml /etc/assemblyline
               - pip install -r test/requirements.txt
+              - python3 -m service.app &
               #- pytest -rsx -vv
-            caches: *caches
             services: *services
 #        - step:
 #            name: Test 3.8
@@ -78,7 +78,7 @@ pipelines:
           script:
             - pip install twine
             - ls dist
-            - twine upload dist/*
+            - twine upload --skip-existing dist/*
       - step:
           name: Deploy to Docker Hub
           trigger: manual
@@ -86,7 +86,7 @@ pipelines:
           deployment: container
           script:
             - export TAG=${BITBUCKET_TAG#v}
-            - until pip install assemblyline== 2>&1 | grep -q $TAG; do sleep 2; done
+            - until pip install assemblyline-service-server== 2>&1 | grep -q $TAG; do sleep 2; done
             - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASSWORD
             - docker build --build-arg version=$TAG -t cccs/assemblyline-service-server:$TAG -t cccs/assemblyline-service-server:latest docker
             - docker push cccs/assemblyline-service-server
@@ -102,14 +102,3 @@ definitions:
     redis:
       image: redis
       memory: 256
-
-    zookeeper:
-      image: zookeeper
-      memory: 512
-
-    solr:
-      image: solr:7.5-alpine
-      memory: 768
-      environment:
-        ZK_HOST: 'localhost:2181'
-        SOLR_JAVA_MEM: '-Xms256m -Xmx256m'
