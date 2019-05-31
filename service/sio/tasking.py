@@ -12,6 +12,8 @@ from assemblyline.common import forge
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.common.metrics import MetricsFactory
 from assemblyline.odm.messages.task import Task
+from assemblyline.odm.messages.service_heartbeat import Metrics
+from assemblyline.odm.messages.service_timing_heartbeat import Metrics as TimingMetrics
 from assemblyline.odm.models.error import Error
 from assemblyline.odm.models.result import Result
 from assemblyline.remote.datatypes.queues.named import NamedQueue
@@ -67,7 +69,7 @@ class TaskingNamespace(Namespace):
 
         LOGGER.info(f"SocketIO:{self.namespace} - Starting to monitor {service_name} queue for new tasks")
         queue = NamedQueue(service_queue_name(service_name), private=True)
-        counter = MetricsFactory('service', name=service_name, config=config)
+        counter = MetricsFactory('service', Metrics, name=service_name, config=config)
 
         try:
             while True:
@@ -120,8 +122,8 @@ class TaskingNamespace(Namespace):
 
     def on_done_task(self, service_name, exec_time, task, result):
         client_id = get_request_id(request)
-        counter = MetricsFactory('service', name=service_name, config=config)
-        counter_timing = MetricsFactory('service', name=service_name, config=config)
+        counter = MetricsFactory('service', Metrics, name=service_name, config=config)
+        counter_timing = MetricsFactory('service', TimingMetrics, name=service_name, config=config)
 
         task = Task(task)
         expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
@@ -164,7 +166,7 @@ class TaskingNamespace(Namespace):
         counter_timing.increment_execution_time('execution', exec_time)
 
     def on_got_task(self, service_name, idle_time):
-        counter_timing = MetricsFactory('service', name=service_name, config=config)
+        counter_timing = MetricsFactory('service', Metrics, name=service_name, config=config)
         counter_timing.increment_execution_time('idle', idle_time)
         client_id = get_request_id(request)
         LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Client was idle for {idle_time}ms and received the {service_name} task and started processing")
