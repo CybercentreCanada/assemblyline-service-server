@@ -3,23 +3,20 @@ import shutil
 import tempfile
 
 from flask import request
-from flask_socketio import Namespace
 
 from assemblyline.common import forge
 from assemblyline.common import identify
 from assemblyline.common.isotime import now_as_iso
-from service.config import LOGGER
+from service.sio.base import BaseNamespace, LOGGER
 
 filestore = forge.get_filestore()
 datastore = forge.get_datastore()
 
-class HelperNamespace(Namespace):
-    def __init__(self, namespace=None):
-        super().__init__(namespace=namespace)
-
+class HelperNamespace(BaseNamespace):
     def on_download_file(self, sha256, dest_path):
         client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Sending file to client, SHA256: {sha256}")
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                    f"Sending file to client, SHA256: {sha256}")
 
         temp_dir = os.path.join(tempfile.gettempdir(), sha256)
         try:
@@ -36,7 +33,8 @@ class HelperNamespace(Namespace):
 
     def on_get_classification_definition(self, yml_file):
         client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Sending classification definition to client")
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                    f"Sending classification definition to client")
 
         classification_definition = forge.get_classification().__dict__['original_definition']
         return classification_definition, yml_file
@@ -44,7 +42,8 @@ class HelperNamespace(Namespace):
     def on_get_system_constants(self, json_file):
         constants = forge.get_constants()
         client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Sending system constants to client")
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                    f"Sending system constants to client")
 
         out = {'FILE_SUMMARY': constants.FILE_SUMMARY,
                'RECOGNIZED_TAGS': constants.RECOGNIZED_TAGS,
@@ -57,7 +56,8 @@ class HelperNamespace(Namespace):
 
     def on_start_download(self, sha256, file_path):
         client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Sending file to client, SHA256: {sha256}")
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                    f"Sending file to client, SHA256: {sha256}")
 
         temp_dir = os.path.join(tempfile.gettempdir(), sha256)
         try:
@@ -84,7 +84,8 @@ class HelperNamespace(Namespace):
 
     def on_upload_file(self, data, classification, service_name, sha256, ttl):
         client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Received file from client, SHA256: {sha256}")
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                    f"Received file from client, SHA256: {sha256}")
 
         temp_dir = os.path.join(tempfile.gettempdir(), service_name)
         try:

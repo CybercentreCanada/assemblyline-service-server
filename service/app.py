@@ -22,7 +22,9 @@ LOGGER.info("SocketIO server ready to receive connections...")
 
 # Prepare the app
 app = Flask('svc-socketio')
-socketio = SocketIO(app, async_mode="gevent" if not config.ui.debug else "threading")
+app.config['SECRET_KEY'] = 'secretkey!'
+# NOTE: we need to run in threading mode while debugging otherwise, use gevent
+socketio = SocketIO(app, async_mode='gevent' if not config.ui.debug else 'threading')
 
 # Loading the different namespaces
 socketio.on_namespace(HelperNamespace('/helper'))

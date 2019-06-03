@@ -28,9 +28,9 @@ RATE_LIMITER = Counters(prefix="quota",
 #################################################################
 # Prepare loggers
 config.logging.log_to_console = config.logging.log_to_console or DEBUG
-al_log.init_logging("alsvc", config=config)
+al_log.init_logging('svc', config=config)
 
-LOGGER = logging.getLogger('assemblyline.alsvc')
+LOGGER = logging.getLogger('assemblyline.svc')
 
 LOGGER.debug('Logger ready!')
 

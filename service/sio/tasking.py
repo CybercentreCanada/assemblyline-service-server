@@ -1,23 +1,21 @@
 import hashlib
 import json
 import random
-import threading
 
 from flask import request
-from flask_socketio import Namespace
 
 from al_core.dispatching.client import DispatchClient
 from al_core.dispatching.dispatcher import service_queue_name
 from assemblyline.common import forge
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.common.metrics import MetricsFactory
-from assemblyline.odm.messages.task import Task
 from assemblyline.odm.messages.service_heartbeat import Metrics
 from assemblyline.odm.messages.service_timing_heartbeat import Metrics as TimingMetrics
+from assemblyline.odm.messages.task import Task
 from assemblyline.odm.models.error import Error
 from assemblyline.odm.models.result import Result
 from assemblyline.remote.datatypes.queues.named import NamedQueue
-from service.config import LOGGER
+from service.sio.base import BaseNamespace, LOGGER
 
 config = forge.get_config()
 datastore = forge.get_datastore()
@@ -26,39 +24,10 @@ filestore = forge.get_filestore()
 dispatch_client = DispatchClient(datastore)
 
 
-class TaskingNamespace(Namespace):
+class TaskingNamespace(BaseNamespace):
     def __init__(self, namespace=None):
-        self.connections_lock = threading.RLock()
-        self.client_map = {}
         self.watch_threads = set()
-        self.banned_clients = []
         super().__init__(namespace=namespace)
-
-    def _deactivate_client(self, client_id):
-        with self.connections_lock:
-            if client_id in self.banned_clients:
-                self.banned_clients.remove(client_id)
-
-            for svc_name in list(self.client_map.keys()):
-                if client_id in self.client_map[svc_name]:
-                    self.client_map[svc_name].remove(client_id)
-                    LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Done waiting for {svc_name} tasks")
-
-    def on_service_client_connect(self):
-        client_id = get_request_id(request)
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - New connection established from: {ip}")
-
-    def on_disconnect(self):
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-        client_id = get_request_id(request)
-        self._deactivate_client(client_id)
-
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Disconnected from: {ip}")
-
-    def default_error_handler(self, e):
-        LOGGER.info(f"Error: {str(e)}")
-        pass
 
     # noinspection PyBroadException
     def get_task_for_service(self, service_name, service_version, service_tool_version):
@@ -75,7 +44,7 @@ class TaskingNamespace(Namespace):
             while True:
                 task = queue.pop(timeout=1)
                 with self.connections_lock:
-                    clients = list(set(self.client_map.get(service_name, [])).difference(set(self.banned_clients)))
+                    clients = list(set(self.clients.get(service_name, [])).difference(set(self.banned_clients)))
                     if len(clients) == 0:
                         # We have no more client, put the task back and quit...
                         if task:
@@ -107,7 +76,8 @@ class TaskingNamespace(Namespace):
                         self.banned_clients.append(client_id)
 
                     dispatch_client.running_tasks.set(task.key(), task.as_primitives())
-                    LOGGER.info(f"SocketIO:{self.namespace} - Sending {service_name} task to client {client_id}")
+                    LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                                f"Sending {service_name} task to client")
                 else:
                     dispatch_client.service_finished(task.sid, result_key, result)
 
@@ -130,7 +100,8 @@ class TaskingNamespace(Namespace):
         result['expiry_ts'] = expiry_ts
 
         if 'result' in result:  # Task completed successfully
-            LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Client successfully completed the {service_name} task in {exec_time}ms")
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                        f"Client successfully completed the {service_name} task in {exec_time}ms")
 
             result = Result(result)
 
@@ -146,7 +117,8 @@ class TaskingNamespace(Namespace):
             else:
                 counter.increment('not_scored')
         else:  # Task failed
-            LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Client failed to complete the {service_name} task in {exec_time}ms")
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                        f"Client failed to complete the {service_name} task in {exec_time}ms")
 
             error = Error(result)
 
@@ -158,7 +130,7 @@ class TaskingNamespace(Namespace):
             dispatch_client.service_failed(task.sid, error_key, error)
 
             # Metrics
-            if error.response.status == "FAIL_RECOVERABLE":
+            if error.response.status == 'FAIL_RECOVERABLE':
                 counter.increment('fail_recoverable')
             else:
                 counter.increment('fail_nonrecoverable')
@@ -169,17 +141,19 @@ class TaskingNamespace(Namespace):
         counter_timing = MetricsFactory('service', Metrics, name=service_name, config=config)
         counter_timing.increment_execution_time('idle', idle_time)
         client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Client was idle for {idle_time}ms and received the {service_name} task and started processing")
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                    f"Client was idle for {idle_time}ms and received the {service_name} task and started processing")
         self._deactivate_client(client_id)
 
     def on_wait_for_task(self, service_name, service_version, service_tool_version):
         client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - Waiting for tasks in {service_name}[{service_version}] queue...")
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                    f"Waiting for tasks in {service_name}[{service_version}] queue...")
 
         with self.connections_lock:
-            if service_name not in self.client_map:
-                self.client_map[service_name] = []
-            self.client_map[service_name].append(client_id)
+            if service_name not in self.clients:
+                self.clients[service_name] = []
+            self.clients[service_name].append(client_id)
 
         self.socketio.start_background_task(target=self.get_task_for_service, service_name=service_name, service_version=service_version, service_tool_version=service_tool_version)
         self.socketio.emit('wait_for_task', client_id, namespace=self.namespace, room=client_id)
