@@ -71,7 +71,7 @@ class TaskingNamespace(BaseNamespace):
                     counter.increment('cache_miss')
 
                     client_id = random.choice(clients)
-                    self.socketio.emit("got_task", task.as_primitives(), namespace=self.namespace, room=client_id)
+                    self.socketio.emit('got_task', task.as_primitives(), namespace=self.namespace, room=client_id)
                     with self.connections_lock:
                         self.banned_clients.append(client_id)
 
@@ -138,7 +138,7 @@ class TaskingNamespace(BaseNamespace):
         counter_timing.increment_execution_time('execution', exec_time)
 
     def on_got_task(self, service_name, idle_time):
-        counter_timing = MetricsFactory('service', Metrics, name=service_name, config=config)
+        counter_timing = MetricsFactory('service', TimingMetrics, name=service_name, config=config)
         counter_timing.increment_execution_time('idle', idle_time)
         client_id = get_request_id(request)
         LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
@@ -148,7 +148,7 @@ class TaskingNamespace(BaseNamespace):
     def on_wait_for_task(self, service_name, service_version, service_tool_version):
         client_id = get_request_id(request)
         LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
-                    f"Waiting for tasks in {service_name}[{service_version}] queue...")
+                    f"Waiting for tasks in {service_name} service queue...")
 
         with self.connections_lock:
             if service_name not in self.clients:
@@ -160,6 +160,6 @@ class TaskingNamespace(BaseNamespace):
 
 
 def get_request_id(request_p):
-    if hasattr(request_p, "sid"):
+    if hasattr(request_p, 'sid'):
         return request_p.sid
     return None

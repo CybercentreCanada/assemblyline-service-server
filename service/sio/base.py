@@ -50,11 +50,8 @@ class BaseNamespace(Namespace):
         with self.connections_lock:
             self.clients[sid] = info
 
-        try:
-            LOGGER.info(f"SocketIO:{self.namespace} - {info['sid']} - "
+        LOGGER.info(f"SocketIO:{self.namespace} - {info['sid']} - "
                     f"New connection established from: {info['ip']}")
-        except Exception as e:
-            LOGGER.error(str(e))
 
     def on_disconnect(self):
         sid = get_request_id(request)

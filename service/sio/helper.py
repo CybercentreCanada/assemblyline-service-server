@@ -7,6 +7,7 @@ from flask import request
 from assemblyline.common import forge
 from assemblyline.common import identify
 from assemblyline.common.isotime import now_as_iso
+from assemblyline.odm.models.service import Service
 from service.sio.base import BaseNamespace, LOGGER
 
 filestore = forge.get_filestore()
@@ -26,7 +27,6 @@ class HelperNamespace(BaseNamespace):
             filestore.download(sha256, file_path)
             with open(file_path, 'rb') as f:
                 return f.read(), dest_path
-            # return filestore.get(sha256), dest_path
         finally:
             if temp_dir:
                 shutil.rmtree(temp_dir)
@@ -54,6 +54,25 @@ class HelperNamespace(BaseNamespace):
 
         return out, json_file
 
+    def on_register_service(self, service_data):
+        client_id = get_request_id(request)
+
+        service = Service(service_data)
+
+        if not datastore.service_delta.get_if_exists(service.name):
+            # Save service delta
+            datastore.service_delta.save(service.name, {'version': service.version})
+            datastore.service_delta.commit()
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                        f"New service registered: {service.name}_{service.version}")
+
+        if not datastore.service.get_if_exists(f'{service.name}_{service.version}'):
+            # Save service
+            datastore.service.save(f'{service.name}_{service.version}', service)
+            datastore.service.commit()
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                        f"New service version registered: {service.name}_{service.version}")
+
     def on_start_download(self, sha256, file_path):
         client_id = get_request_id(request)
         LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
@@ -73,14 +92,9 @@ class HelperNamespace(BaseNamespace):
                     self.socketio.emit('write_file_chunk', (file_path, offset, chunk), namespace=self.namespace, room=client_id)
                     offset += chunk_size
 
-
-            # with open(file_path, 'rb') as f:
-            #     return f.read(), dest_path
-            # return filestore.get(sha256), dest_path
         finally:
             if temp_dir:
                 shutil.rmtree(temp_dir)
-
 
     def on_upload_file(self, data, classification, service_name, sha256, ttl):
         client_id = get_request_id(request)
