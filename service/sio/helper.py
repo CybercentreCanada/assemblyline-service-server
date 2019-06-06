@@ -13,23 +13,6 @@ datastore = forge.get_datastore()
 
 class HelperNamespace(BaseNamespace):
     @authenticated_only
-    def on_download_file(self, sha256, dest_path, client_info):
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
-                    f"Sending file to client, SHA256: {sha256}")
-
-        temp_dir = os.path.join(tempfile.gettempdir(), sha256)
-        try:
-            if not os.path.exists(temp_dir):
-                os.makedirs(temp_dir)
-            file_path = os.path.join(temp_dir, sha256)
-            filestore.download(sha256, file_path)
-            with open(file_path, 'rb') as f:
-                return f.read(), dest_path
-        finally:
-            if temp_dir:
-                shutil.rmtree(temp_dir)
-
-    @authenticated_only
     def on_get_classification_definition(self, yml_file, client_info):
         LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                     f"Sending classification definition to client")
@@ -75,22 +58,7 @@ class HelperNamespace(BaseNamespace):
         LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                     f"Sending file to client, SHA256: {sha256}")
 
-        temp_dir = os.path.join(tempfile.gettempdir(), sha256)
-        try:
-            if not os.path.exists(temp_dir):
-                os.makedirs(temp_dir)
-            temp_file_path = os.path.join(temp_dir, sha256)
-            filestore.download(sha256, temp_file_path)
-
-            offset = 0
-            chunk_size = 64*1024
-            with open(temp_file_path, 'rb') as f:
-                for chunk in read_in_chunks(f, chunk_size):
-                    self.socketio.emit('write_file_chunk', (file_path, offset, chunk), namespace=self.namespace, room=client_info['id'])
-                    offset += chunk_size
-        finally:
-            if temp_dir:
-                shutil.rmtree(temp_dir)
+        self.socketio.start_background_task(target=self.send_file, sha256=sha256, file_path=file_path, client_info=client_info)
 
     @authenticated_only
     def on_upload_file(self, data, classification, sha256, ttl, client_info):
@@ -116,6 +84,25 @@ class HelperNamespace(BaseNamespace):
         finally:
             if temp_dir:
                 shutil.rmtree(temp_dir)
+
+    def send_file(self, sha256, file_path, client_info):
+        temp_file = tempfile.NamedTemporaryFile()
+        try:
+            filestore.download(sha256, temp_file.name)
+            file_size = os.path.getsize(temp_file.name)
+
+            offset = 0
+            chunk_size = 64 * 1024
+            with open(temp_file.name, 'rb') as f:
+                last_chunk = False
+                for chunk in read_in_chunks(f, chunk_size):
+                    if (file_size < chunk_size) or ((offset + chunk_size) > file_size):
+                        last_chunk = True
+
+                    self.socketio.emit('write_file_chunk', (file_path, offset, chunk, last_chunk), namespace=self.namespace, room=client_info['id'])
+                    offset += chunk_size
+        finally:
+            temp_file.close()
 
 
 def read_in_chunks(file_object, chunk_size):
