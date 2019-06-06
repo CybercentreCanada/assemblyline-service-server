@@ -2,21 +2,19 @@ import os
 import shutil
 import tempfile
 
-from flask import request
-
 from assemblyline.common import forge
 from assemblyline.common import identify
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.odm.models.service import Service
-from service.sio.base import BaseNamespace, LOGGER
+from service.sio.base import BaseNamespace, authenticated_only, LOGGER
 
 filestore = forge.get_filestore()
 datastore = forge.get_datastore()
 
 class HelperNamespace(BaseNamespace):
-    def on_download_file(self, sha256, dest_path):
-        client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+    @authenticated_only
+    def on_download_file(self, sha256, dest_path, client_info):
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                     f"Sending file to client, SHA256: {sha256}")
 
         temp_dir = os.path.join(tempfile.gettempdir(), sha256)
@@ -31,18 +29,18 @@ class HelperNamespace(BaseNamespace):
             if temp_dir:
                 shutil.rmtree(temp_dir)
 
-    def on_get_classification_definition(self, yml_file):
-        client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+    @authenticated_only
+    def on_get_classification_definition(self, yml_file, client_info):
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                     f"Sending classification definition to client")
 
         classification_definition = forge.get_classification().__dict__['original_definition']
         return classification_definition, yml_file
 
-    def on_get_system_constants(self, json_file):
+    @authenticated_only
+    def on_get_system_constants(self, json_file, client_info):
         constants = forge.get_constants()
-        client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                     f"Sending system constants to client")
 
         out = {'FILE_SUMMARY': constants.FILE_SUMMARY,
@@ -54,28 +52,27 @@ class HelperNamespace(BaseNamespace):
 
         return out, json_file
 
-    def on_register_service(self, service_data):
-        client_id = get_request_id(request)
-
+    @authenticated_only
+    def on_register_service(self, service_data, client_info):
         service = Service(service_data)
 
         if not datastore.service_delta.get_if_exists(service.name):
             # Save service delta
             datastore.service_delta.save(service.name, {'version': service.version})
             datastore.service_delta.commit()
-            LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                         f"New service registered: {service.name}_{service.version}")
 
         if not datastore.service.get_if_exists(f'{service.name}_{service.version}'):
             # Save service
             datastore.service.save(f'{service.name}_{service.version}', service)
             datastore.service.commit()
-            LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                         f"New service version registered: {service.name}_{service.version}")
 
-    def on_start_download(self, sha256, file_path):
-        client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+    @authenticated_only
+    def on_start_download(self, sha256, file_path, client_info):
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                     f"Sending file to client, SHA256: {sha256}")
 
         temp_dir = os.path.join(tempfile.gettempdir(), sha256)
@@ -89,16 +86,16 @@ class HelperNamespace(BaseNamespace):
             chunk_size = 64*1024
             with open(temp_file_path, 'rb') as f:
                 for chunk in read_in_chunks(f, chunk_size):
-                    self.socketio.emit('write_file_chunk', (file_path, offset, chunk), namespace=self.namespace, room=client_id)
+                    self.socketio.emit('write_file_chunk', (file_path, offset, chunk), namespace=self.namespace, room=client_info['id'])
                     offset += chunk_size
-
         finally:
             if temp_dir:
                 shutil.rmtree(temp_dir)
 
-    def on_upload_file(self, data, classification, service_name, sha256, ttl):
-        client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+    @authenticated_only
+    def on_upload_file(self, data, classification, sha256, ttl, client_info):
+        service_name = client_info['service_name']
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                     f"Received file from client, SHA256: {sha256}")
 
         temp_dir = os.path.join(tempfile.gettempdir(), service_name)
@@ -119,12 +116,6 @@ class HelperNamespace(BaseNamespace):
         finally:
             if temp_dir:
                 shutil.rmtree(temp_dir)
-
-
-def get_request_id(request_p):
-    if hasattr(request_p, "sid"):
-        return request_p.sid
-    return None
 
 
 def read_in_chunks(file_object, chunk_size):

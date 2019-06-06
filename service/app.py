@@ -22,7 +22,7 @@ LOGGER.info("SocketIO server ready to receive connections...")
 
 # Prepare the app
 app = Flask('svc-socketio')
-app.config['SECRET_KEY'] = 'secretkey!'
+app.config['SECRET_KEY'] = config.ui.secret_key
 # NOTE: we need to run in threading mode while debugging otherwise, use gevent
 socketio = SocketIO(app, async_mode='gevent' if not config.ui.debug else 'threading')
 

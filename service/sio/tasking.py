@@ -2,8 +2,6 @@ import hashlib
 import json
 import random
 
-from flask import request
-
 from al_core.dispatching.client import DispatchClient
 from al_core.dispatching.dispatcher import service_queue_name
 from assemblyline.common import forge
@@ -15,7 +13,7 @@ from assemblyline.odm.messages.task import Task
 from assemblyline.odm.models.error import Error
 from assemblyline.odm.models.result import Result
 from assemblyline.remote.datatypes.queues.named import NamedQueue
-from service.sio.base import BaseNamespace, LOGGER
+from service.sio.base import BaseNamespace, authenticated_only, LOGGER
 
 config = forge.get_config()
 datastore = forge.get_datastore()
@@ -30,7 +28,11 @@ class TaskingNamespace(BaseNamespace):
         super().__init__(namespace=namespace)
 
     # noinspection PyBroadException
-    def get_task_for_service(self, service_name, service_version, service_tool_version):
+    def get_task_for_service(self, client_info):
+        service_name = client_info['service_name']
+        service_version = client_info['service_version']
+        service_tool_version = client_info['service_tool_version']
+
         with self.connections_lock:
             if service_name in self.watch_threads:
                 return
@@ -44,7 +46,7 @@ class TaskingNamespace(BaseNamespace):
             while True:
                 task = queue.pop(timeout=1)
                 with self.connections_lock:
-                    clients = list(set(self.clients.get(service_name, [])).difference(set(self.banned_clients)))
+                    clients = list(set(self.available_clients.get(service_name, [])).difference(set(self.banned_clients)))
                     if len(clients) == 0:
                         # We have no more client, put the task back and quit...
                         if task:
@@ -87,11 +89,12 @@ class TaskingNamespace(BaseNamespace):
             if service_name in self.watch_threads:
                 self.watch_threads.remove(service_name)
 
-            LOGGER.info(f"SocketIO:{self.namespace} - No more clients connected to service "
-                        f"{service_name} queue, exiting thread...")
+            LOGGER.info(f"SocketIO:{self.namespace} - No more clients connected to "
+                        f"{service_name} service queue, exiting thread...")
 
-    def on_done_task(self, service_name, exec_time, task, result):
-        client_id = get_request_id(request)
+    @authenticated_only
+    def on_done_task(self, exec_time, task, result, client_info):
+        service_name = client_info['service_name']
         counter = MetricsFactory('service', Metrics, name=service_name, config=config)
         counter_timing = MetricsFactory('service', TimingMetrics, name=service_name, config=config)
 
@@ -100,7 +103,7 @@ class TaskingNamespace(BaseNamespace):
         result['expiry_ts'] = expiry_ts
 
         if 'result' in result:  # Task completed successfully
-            LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                         f"Client successfully completed the {service_name} task in {exec_time}ms")
 
             result = Result(result)
@@ -117,7 +120,7 @@ class TaskingNamespace(BaseNamespace):
             else:
                 counter.increment('not_scored')
         else:  # Task failed
-            LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                         f"Client failed to complete the {service_name} task in {exec_time}ms")
 
             error = Error(result)
@@ -137,29 +140,21 @@ class TaskingNamespace(BaseNamespace):
 
         counter_timing.increment_execution_time('execution', exec_time)
 
-    def on_got_task(self, service_name, idle_time):
+    @authenticated_only
+    def on_got_task(self, idle_time, client_info):
+        service_name = client_info['service_name']
         counter_timing = MetricsFactory('service', TimingMetrics, name=service_name, config=config)
         counter_timing.increment_execution_time('idle', idle_time)
-        client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                     f"Client was idle for {idle_time}ms and received the {service_name} task and started processing")
-        self._deactivate_client(client_id)
+        self._deactivate_client(client_info['id'])
 
-    def on_wait_for_task(self, service_name, service_version, service_tool_version):
-        client_id = get_request_id(request)
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
-                    f"Waiting for tasks in {service_name} service queue...")
+    @authenticated_only
+    def on_wait_for_task(self, client_info):
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+                    f"Waiting for tasks in {client_info['service_name']} service queue...")
 
-        with self.connections_lock:
-            if service_name not in self.clients:
-                self.clients[service_name] = []
-            self.clients[service_name].append(client_id)
+        self._activate_client(client_info)
 
-        self.socketio.start_background_task(target=self.get_task_for_service, service_name=service_name, service_version=service_version, service_tool_version=service_tool_version)
-        self.socketio.emit('wait_for_task', client_id, namespace=self.namespace, room=client_id)
-
-
-def get_request_id(request_p):
-    if hasattr(request_p, 'sid'):
-        return request_p.sid
-    return None
+        self.socketio.start_background_task(target=self.get_task_for_service, client_info=client_info)
