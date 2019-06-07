@@ -86,7 +86,7 @@ pipelines:
           deployment: container
           script:
             - export TAG=${BITBUCKET_TAG#v}
-            - until pip install assemblyline-service-server== 2>&1 | grep -q $TAG; do sleep 2; done
+            - until pip3 install assemblyline-service-server== 2>&1 | grep -q $TAG; do sleep 2; done
             - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASSWORD
             - docker build --build-arg version=$TAG -t cccs/assemblyline-service-server:$TAG -t cccs/assemblyline-service-server:latest docker
             - docker push cccs/assemblyline-service-server
