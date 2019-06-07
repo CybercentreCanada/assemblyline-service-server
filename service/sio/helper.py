@@ -96,7 +96,7 @@ class HelperNamespace(BaseNamespace):
             with open(temp_file.name, 'rb') as f:
                 last_chunk = False
                 for chunk in read_in_chunks(f, chunk_size):
-                    if (file_size < chunk_size) or ((offset + chunk_size) > file_size):
+                    if (file_size < chunk_size) or ((offset + chunk_size) >= file_size):
                         last_chunk = True
 
                     self.socketio.emit('write_file_chunk', (file_path, offset, chunk, last_chunk), namespace=self.namespace, room=client_info['id'])
