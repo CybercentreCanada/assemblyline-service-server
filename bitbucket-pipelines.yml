@@ -1,4 +1,6 @@
 
+image: python:3.7
+
 options:
   max-time: 5
 
@@ -7,7 +9,6 @@ pipelines:
     - parallel:
       - step:
           name: Build & Test 3.7
-          image: python:3.7
           caches: &caches
             - pip
           script: &build_test
@@ -33,7 +34,6 @@ pipelines:
     v*:
       - step:
           name: Build Package
-          image: python:3.7
           script:
             - pip install wheel
             - python setup.py bdist_wheel
@@ -43,7 +43,6 @@ pipelines:
       - parallel:
         - step:
             name: Test 3.7
-            image: python:3.7
             script: &deploy_test
               - rm -rf service setup.py  # Make sure we are running on the package from the prior build
               - apt update
@@ -64,7 +63,6 @@ pipelines:
 #            services: *services
       - step:
           name: Deploy to Test PyPI
-          image: python:3.7
           deployment: test_pypi
           script:
             - pip install twine
@@ -72,7 +70,6 @@ pipelines:
             - twine upload --skip-existing --repository-url $TEST_REPOSITORY_URL dist/*
       - step:
           name: Deploy to PyPI
-          image: python:3.7
           trigger: manual
           deployment: pypi
           script:
