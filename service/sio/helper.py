@@ -27,7 +27,7 @@ class HelperNamespace(BaseNamespace):
                     f"Sending system constants to client")
 
         out = {'FILE_SUMMARY': constants.FILE_SUMMARY,
-               'RECOGNIZED_TAGS': constants.RECOGNIZED_TAGS,
+               'RECOGNIZED_TYPES': constants.RECOGNIZED_TYPES,
                'RULE_PATH': constants.RULE_PATH,
                'STANDARD_TAG_CONTEXTS': constants.STANDARD_TAG_CONTEXTS,
                'STANDARD_TAG_TYPES': constants.STANDARD_TAG_TYPES
