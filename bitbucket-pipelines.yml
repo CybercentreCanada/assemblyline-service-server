@@ -16,6 +16,7 @@ pipelines:
             - apt install -y build-essential libffi-dev libfuzzy-dev python3-dev
             - mkdir -p /etc/assemblyline/
             - mkdir -p /var/cache/assemblyline/
+            - mkdir -p /var/lib/assemblyline/
             - cp test/bitbucket/config.yml /etc/assemblyline
             - pip install -r test/requirements.txt
             - pip install -e .
@@ -24,6 +25,7 @@ pipelines:
           services: &services
             - elasticsearch
             - redis
+            - minio
 #      - step:
 #          name: Build & Test 3.8
 #          image: python:3.8-rc
@@ -53,7 +55,7 @@ pipelines:
               - cp test/bitbucket/config.yml /etc/assemblyline
               - pip install -r test/requirements.txt
               - python3 -m service.app &
-              #- pytest -rsx -vv
+              - pytest -rsx -vv
             services: *services
 #        - step:
 #            name: Test 3.8
@@ -99,3 +101,10 @@ definitions:
     redis:
       image: redis
       memory: 256
+
+    minio:
+      image: sgaroncse/minio
+      memory: 256
+      environment:
+        MINIO_ACCESS_KEY: al_storage_key
+        MINIO_SECRET_KEY: Ch@ngeTh!sPa33w0rd

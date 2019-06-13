@@ -1,7 +1,22 @@
 import pytest
 import socketio
 
+from assemblyline.common import forge
+from assemblyline.odm.random_data import create_users, wipe_users
 from service.config import AUTH_KEY
+
+ds = forge.get_datastore()
+
+
+def purge_socket():
+    wipe_users(ds)
+
+
+@pytest.fixture(scope="module")
+def datastore(request):
+    create_users(ds)
+    request.addfinalizer(purge_socket)
+    return ds
 
 
 @pytest.fixture(scope="function")
@@ -16,8 +31,7 @@ def sio():
     return sio
 
 
-def test_get_classification_definition(sio):
-
+def test_get_classification_definition(datastore, sio):
     def callback_get_classification_definition(classification_definition):
         assert classification_definition
 
@@ -27,8 +41,7 @@ def test_get_classification_definition(sio):
         sio.disconnect()
 
 
-def test_get_system_constants(sio):
-
+def test_get_system_constants(datastore, sio):
     def callback_get_system_constants(constants):
         assert constants
 
