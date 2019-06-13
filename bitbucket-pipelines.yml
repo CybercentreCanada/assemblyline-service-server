@@ -20,10 +20,10 @@ pipelines:
             - pip install -r test/requirements.txt
             - pip install -e .
             - python3 -m service.app &
-            # - pytest -rsx -vv
+            - pytest -rsx -vv
           services: &services
-            - redis
             - elasticsearch
+            - redis
 #      - step:
 #          name: Build & Test 3.8
 #          image: python:3.8-rc
