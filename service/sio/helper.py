@@ -11,29 +11,28 @@ from service.sio.base import BaseNamespace, authenticated_only, LOGGER
 filestore = forge.get_filestore()
 datastore = forge.get_datastore()
 
+
 class HelperNamespace(BaseNamespace):
     @authenticated_only
-    def on_get_classification_definition(self, yml_file, client_info):
+    def on_get_classification_definition(self, client_info):
         LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
-                    f"Sending classification definition to client")
+                    f"Sending classification definition to {client_info['service_name']} service client")
 
-        classification_definition = forge.get_classification().__dict__['original_definition']
-        return classification_definition, yml_file
+        return forge.get_classification().__dict__['original_definition']
 
     @authenticated_only
-    def on_get_system_constants(self, json_file, client_info):
+    def on_get_system_constants(self, client_info):
         constants = forge.get_constants()
         LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
-                    f"Sending system constants to client")
+                    f"Sending system constants to {client_info['service_name']} service client")
 
-        out = {'FILE_SUMMARY': constants.FILE_SUMMARY,
-               'RECOGNIZED_TYPES': constants.RECOGNIZED_TYPES,
-               'RULE_PATH': constants.RULE_PATH,
-               'STANDARD_TAG_CONTEXTS': constants.STANDARD_TAG_CONTEXTS,
-               'STANDARD_TAG_TYPES': constants.STANDARD_TAG_TYPES
-               }
-
-        return out, json_file
+        return {
+            'FILE_SUMMARY': constants.FILE_SUMMARY,
+            'RECOGNIZED_TYPES': constants.RECOGNIZED_TYPES,
+            'RULE_PATH': constants.RULE_PATH,
+            'STANDARD_TAG_CONTEXTS': constants.STANDARD_TAG_CONTEXTS,
+            'STANDARD_TAG_TYPES': constants.STANDARD_TAG_TYPES,
+        }
 
     @authenticated_only
     def on_register_service(self, service_data, client_info):
@@ -56,7 +55,7 @@ class HelperNamespace(BaseNamespace):
     @authenticated_only
     def on_start_download(self, sha256, file_path, client_info):
         LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
-                    f"Sending file to client, SHA256: {sha256}")
+                    f"Sending file to {client_info['service_name']} service client, SHA256: {sha256}")
 
         self.socketio.start_background_task(target=self.send_file, sha256=sha256, file_path=file_path, client_info=client_info)
 

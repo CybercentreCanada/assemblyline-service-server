@@ -79,7 +79,7 @@ class TaskingNamespace(BaseNamespace):
 
                     dispatch_client.running_tasks.set(task.key(), task.as_primitives())
                     LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
-                                f"Sending {service_name} task to client")
+                                f"Sending {service_name} service task to client")
                 else:
                     dispatch_client.service_finished(task.sid, result_key, result)
 
