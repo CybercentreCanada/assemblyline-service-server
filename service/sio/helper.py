@@ -36,6 +36,7 @@ class HelperNamespace(BaseNamespace):
 
     @authenticated_only
     def on_register_service(self, service_data, client_info):
+        keep_alive = True
         service = Service(service_data)
 
         if not datastore.service_delta.get_if_exists(service.name):
@@ -51,6 +52,10 @@ class HelperNamespace(BaseNamespace):
             datastore.service.commit()
             LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
                         f"New service version registered: {service.name}_{service.version}")
+            self.socketio.emit('quit', namespace=self.namespace, room=client_info['id'])
+            keep_alive = False
+
+        return keep_alive
 
     @authenticated_only
     def on_start_download(self, sha256, file_path, client_info):
