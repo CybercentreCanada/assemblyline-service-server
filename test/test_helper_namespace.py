@@ -43,9 +43,32 @@ def test_get_classification_definition(datastore, sio):
 
 def test_get_system_constants(datastore, sio):
     def callback_get_system_constants(constants):
-        assert constants
+        assert len(constants) == 5
 
     try:
         sio.emit('get_classification_definition', namespace='/helper', callback=callback_get_system_constants)
+    finally:
+        sio.disconnect()
+
+
+def test_register_service(sio):
+    def callback_register_service_new(keep_alive):
+        assert keep_alive is False
+
+    def callback_register_service_existing(keep_alive):
+        assert keep_alive is True
+
+    try:
+        service_data = {
+            'name': 'TestService',
+            'enabled': True,
+            'category': 'Static Analysis',
+            'stage': 'CORE',
+            'version': '4.0.0'
+        }
+
+        sio.emit('register_service', service_data, namespace='/helper', callback=callback_register_service_new)
+
+        sio.emit('register_service', service_data, namespace='/helper', callback=callback_register_service_existing)
     finally:
         sio.disconnect()
