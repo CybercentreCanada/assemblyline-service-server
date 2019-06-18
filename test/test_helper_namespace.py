@@ -31,7 +31,7 @@ def sio():
     return sio
 
 
-def test_get_classification_definition(sio):
+def test_get_classification_definition(datastore, sio):
     def callback_get_classification_definition(classification_definition):
         assert classification_definition
 
@@ -41,7 +41,7 @@ def test_get_classification_definition(sio):
         sio.disconnect()
 
 
-def test_get_system_constants(sio):
+def test_get_system_constants(datastore, sio):
     def callback_get_system_constants(constants):
         assert len(constants) == 5
 
@@ -51,12 +51,12 @@ def test_get_system_constants(sio):
         sio.disconnect()
 
 
-def test_register_service(sio):
+def test_register_service(datastore, sio):
     def callback_register_service_new(keep_alive):
         assert keep_alive is False
 
     def callback_register_service_existing(keep_alive):
-        assert keep_alive is False
+        assert keep_alive is True
 
     try:
         service_data = {
