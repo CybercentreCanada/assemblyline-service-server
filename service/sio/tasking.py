@@ -19,12 +19,11 @@ config = forge.get_config()
 datastore = forge.get_datastore()
 filestore = forge.get_filestore()
 
-dispatch_client = DispatchClient(datastore)
-
 
 class TaskingNamespace(BaseNamespace):
     def __init__(self, namespace=None):
         self.watch_threads = set()
+        self.dispatch_client = DispatchClient(datastore)
         super().__init__(namespace=namespace)
 
     # noinspection PyBroadException
@@ -44,19 +43,18 @@ class TaskingNamespace(BaseNamespace):
 
         try:
             while True:
-                task = queue.pop(timeout=1)
+                task = self.dispatch_client.request_work(service_name, timeout=1)
                 with self.connections_lock:
                     clients = list(set(self.available_clients.get(service_name, [])).difference(set(self.banned_clients)))
                     if len(clients) == 0:
                         # We have no more client, put the task back and quit...
                         if task:
-                            queue.push(task)
+                            queue.push(task.as_primitives())
                         break
 
                 if not task:
                     continue
 
-                task = Task(task)
                 counter.increment('execute')
 
                 service_tool_version_hash = hashlib.md5((service_tool_version.encode('utf-8'))).hexdigest()
@@ -77,11 +75,10 @@ class TaskingNamespace(BaseNamespace):
                     with self.connections_lock:
                         self.banned_clients.append(client_id)
 
-                    dispatch_client.running_tasks.set(task.key(), task.as_primitives())
                     LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
                                 f"Sending {service_name} service task to client")
                 else:
-                    dispatch_client.service_finished(task.sid, result_key, result)
+                    self.dispatch_client.service_finished(task.sid, result_key, result)
 
         except Exception:
             LOGGER.exception(f"SocketIO:{self.namespace}")
@@ -112,7 +109,7 @@ class TaskingNamespace(BaseNamespace):
             task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
             conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
             result_key = result.build_key(conf_key)
-            dispatch_client.service_finished(task.sid, result_key, result)
+            self.dispatch_client.service_finished(task.sid, result_key, result)
 
             # Metrics
             if result.result.score > 0:
@@ -130,7 +127,7 @@ class TaskingNamespace(BaseNamespace):
             conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
 
             error_key = error.build_key(conf_key)
-            dispatch_client.service_failed(task.sid, error_key, error)
+            self.dispatch_client.service_failed(task.sid, error_key, error)
 
             # Metrics
             if error.response.status == 'FAIL_RECOVERABLE':
