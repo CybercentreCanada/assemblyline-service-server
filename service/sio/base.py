@@ -59,7 +59,6 @@ class BaseNamespace(Namespace):
                 self.available_clients[client_info['service_name']] = []
             self.available_clients[client_info['service_name']].append(client_info['id'])
 
-
     def _deactivate_client(self, client_id):
         with self.connections_lock:
             if client_id in self.banned_clients:
