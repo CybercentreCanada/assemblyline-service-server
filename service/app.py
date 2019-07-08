@@ -32,9 +32,8 @@ socketio.on_namespace(TaskingNamespace('/tasking'))
 
 
 if __name__ == '__main__':
-    LOGGER.setLevel(config.logging.log_level)
-    app.logger.setLevel(config.logging.log_level)
+    app.logger.setLevel(LOGGER.getEffectiveLevel())
     wlog = logging.getLogger('werkzeug')
-    wlog.setLevel(config.logging.log_level)
+    wlog.setLevel(LOGGER.getEffectiveLevel())
     # Run debug mode
     socketio.run(app, host='0.0.0.0', port=5003, debug=config.logging.log_level == 'DEBUG')
