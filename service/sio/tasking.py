@@ -1,3 +1,4 @@
+import logging
 import hashlib
 import json
 import random
@@ -29,57 +30,89 @@ class TaskingNamespace(BaseNamespace):
         self.dispatch_client = DispatchClient(datastore)
         super().__init__(namespace=namespace)
 
-        # TODO remove client from _report_times, _counters when it disconnects
-        self._report_times_lock = threading.Lock()
-        self._report_times = {}
-        self._counters = {}
+        # A lock to prevent the background metrics thread from clashing with the foreground
+        # especially when writing values in client_info
+        self._metrics_lock = threading.Lock()
+        self._metrics_times = {}
+
+        # A background thread that continues to push metrics about client busy/idle status
+        # while the foreground thread is blocking on client events
         thread = threading.Thread(target=self._do_reports_between_events)
         thread.daemon = True
         thread.start()
 
     def on_disconnect(self):
-        super().on_disconnect()
-        client_id = get_request_id(request)
-        with self._report_times_lock:
-            if client_id in self._counters:
-                self._counters[client_id][0].stop()
-                self._counters[client_id][1].stop()
-            self._counters.pop(client_id, None)
-            self._report_times.pop(client_id, None)
+        """When disconnecting we also need to stop the metrics counters.
 
-    def _get_counters(self, client_id, service_name):
-        if client_id not in self._counters:
-            self._counters[client_id] = (
-                MetricsFactory('service_timing', TimingMetrics, name=service_name, config=config),
-                MetricsFactory('service', Metrics, name=service_name, config=config)
-            )
-        return self._counters[client_id]
+        Otherwise they keep running in the background and the client is seen as still
+        active by the rest of the system.
+        """
+        client_info = {}
+        with self.connections_lock:
+            client_id = get_request_id(request)
+            if client_id in self.clients:
+                client_info = self.clients[client_id]
+
+        with self._metrics_lock:
+            self._metrics_times.pop(client_id, None)
+            if 'tasking_counters' in client_info:
+                client_info['tasking_counters'][0].stop()
+                client_info['tasking_counters'][1].stop()
+
+        super().on_disconnect()
+
+    def _get_counters(self, client_info):
+        """Each pair of metrics objects must have a correspondence with a client.
+
+        Creating extra metrics objects causes the rest of the system to see extra false
+        client instances if they aren't cleaned up, or not get consistent heartbeats
+        if they are cleaned up.
+        """
+        with self._metrics_lock:
+            if 'tasking_counters' not in client_info:
+                service_name = client_info['service_name']
+                client_info['tasking_counters'] = (
+                    MetricsFactory('service', Metrics, name=service_name, config=config),
+                    MetricsFactory('service_timing', TimingMetrics, name=service_name, config=config),
+                )
+            return client_info['tasking_counters']
 
     def _do_reports_between_events(self):
+        """A daemon that continues to repeat the last status message for all clients.
+
+        This provides real time feedback for the metrics engine even when the task takes
+        longer to execute than the metrics export interval.
+        """
         while True:
-            time.sleep(0.1)
-            with self.connections_lock:
-                for client_info in list(self.clients.values()):
-                    if client_info['id'] in self.banned_clients:
-                        self.report_active(client_info)
-                    else:
-                        self.report_idle(client_info)
+            try:
+                logging.getLogger('assemblyline.counters').setLevel(logging.INFO)
+                time.sleep(1)
+                with self.connections_lock:
+                    client_info_list = list(self.clients.values())
+                    # LOGGER.debug(f"Doing background reporting round on {len(client_info_list)} clients")
+                    for client_info in client_info_list:
+                        if client_info['id'] in self.banned_clients:
+                            self.report_active(client_info)
+                        elif client_info['id'] in self.available_clients.get(client_info['service_name'], {}):
+                            self.report_idle(client_info)
+            except Exception:
+                LOGGER.exception('Report thread suffered an error')
 
     def report_idle(self, client_info):
-        with self._report_times_lock:
-            now = time.time()
-            delta = now - self._report_times.get(client_info['id'], now)
-            self._report_times[client_info['id']] = now
-            _, counter_timing = self._get_counters(client_info['id'], client_info['service_name'])
-            counter_timing.increment_execution_time('idle', delta)
+        """Tell the metrics system that this client has been idle since the last report."""
+        self._report_metrics(client_info, 'idle')
 
     def report_active(self, client_info):
-        with self._report_times_lock:
+        """Tell the metrics system that this client has been busy since the last report."""
+        self._report_metrics(client_info, 'execution')
+
+    def _report_metrics(self, client_info, timer_label):
+        _, counter_timing = self._get_counters(client_info)
+        with self._metrics_lock:
             now = time.time()
-            delta = now - self._report_times.get(client_info['id'], now)
-            self._report_times[client_info['id']] = now
-            _, counter_timing = self._get_counters(client_info['id'], client_info['service_name'])
-            counter_timing.increment_execution_time('execution', delta)
+            delta = now - self._metrics_times.get(client_info['id'], now)
+            self._metrics_times[client_info['id']] = now
+            counter_timing.increment_execution_time(timer_label, delta)
 
     # noinspection PyBroadException
     def get_task_for_service(self, client_info):
@@ -89,19 +122,22 @@ class TaskingNamespace(BaseNamespace):
 
         with self.connections_lock:
             if service_name in self.watch_threads:
+                LOGGER.debug(f"Service {service_name} already has a watcher thread, exiting.")
                 return
             self.watch_threads.add(service_name)
 
         LOGGER.info(f"SocketIO:{self.namespace} - Starting to monitor {service_name} queue for new tasks")
         queue = NamedQueue(service_queue_name(service_name), private=True)
-        counter, _ = self._get_counters(client_info['id'], service_name)
+        counter, _ = self._get_counters(client_info)
 
         try:
             while True:
-                task = self.dispatch_client.request_work(service_name, timeout=1)
+                task, first_issue = self.dispatch_client.request_work(service_name, timeout=1)
                 with self.connections_lock:
                     clients = list(set(self.available_clients.get(service_name, [])).difference(set(self.banned_clients)))
                     if len(clients) == 0:
+                        # TODO should we do the cache check before we give up for no clients? should this be down
+                        #      with the other connection_lock section?
                         # We have no more client, put the task back and quit...
                         if task:
                             queue.push(task.as_primitives())
@@ -109,6 +145,11 @@ class TaskingNamespace(BaseNamespace):
 
                 if not task:
                     continue
+
+                # This is not the first time request_work has given us this task.
+                if not first_issue:
+                    # TODO check if this job has timed out? Is it currently running? Do we have results?
+                    pass
 
                 counter.increment('execute')
 
@@ -121,19 +162,25 @@ class TaskingNamespace(BaseNamespace):
                                                    service_version=service_version,
                                                    conf_key=conf_key)
 
-                result = datastore.result.get_if_exists(result_key)
-                if not result:
-                    counter.increment('cache_miss')
+                # If we are allowed to try to process the task from the cache.
+                if not task.ignore_cache:
+                    result = datastore.result.get_if_exists(result_key)
+                    if result:
+                        self.dispatch_client.service_finished(task.sid, result_key, result)
+                        continue
 
-                    client_id = random.choice(clients)
-                    self.socketio.emit('got_task', task.as_primitives(), namespace=self.namespace, room=client_id)
-                    with self.connections_lock:
-                        self.banned_clients.append(client_id)
+                # No luck with the cache, lets dispatch the task to a client
+                counter.increment('cache_miss')
 
-                    LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
-                                f"Sending {service_name} service task to client")
-                else:
-                    self.dispatch_client.service_finished(task.sid, result_key, result)
+                # TODO Is this code threaded? If so, could available_clients and banned_clients could have changed
+                #      since we loaded it? If not, why are we locking?
+                client_id = random.choice(clients)
+                self.socketio.emit('got_task', task.as_primitives(), namespace=self.namespace, room=client_id)
+                with self.connections_lock:
+                    self.banned_clients.append(client_id)
+
+                LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
+                            f"Sending {service_name} service task to client")
 
         except Exception:
             LOGGER.exception(f"SocketIO:{self.namespace}")
@@ -146,59 +193,58 @@ class TaskingNamespace(BaseNamespace):
 
     @authenticated_only
     def on_done_task(self, exec_time, task, result, client_info):
-        service_name = client_info['service_name']
-        counter, counter_timing = self._get_counters(client_info['id'], service_name)
-        # counter = MetricsFactory('service', Metrics, name=service_name, config=config)
-        # counter_timing = MetricsFactory('service_timing', TimingMetrics, name=service_name, config=config)
+        service_name = 'unknown'
+        try:
+            service_name = client_info['service_name']
+            counter, _ = self._get_counters(client_info)
+            task = Task(task)
+            expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
+            result['expiry_ts'] = expiry_ts
 
-        task = Task(task)
-        expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
-        result['expiry_ts'] = expiry_ts
+            if 'result' in result:  # Task completed successfully
+                LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+                            f"Client successfully completed the {service_name} task in {exec_time}ms")
 
-        if 'result' in result:  # Task completed successfully
-            LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
-                        f"Client successfully completed the {service_name} task in {exec_time}ms")
+                result = Result(result)
 
-            result = Result(result)
+                service_tool_version_hash = hashlib.md5((result.response.service_tool_version.encode('utf-8'))).hexdigest()
+                task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
+                conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
+                result_key = result.build_key(conf_key)
+                self.dispatch_client.service_finished(task.sid, result_key, result)
 
-            service_tool_version_hash = hashlib.md5((result.response.service_tool_version.encode('utf-8'))).hexdigest()
-            task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
-            conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
-            result_key = result.build_key(conf_key)
-            self.dispatch_client.service_finished(task.sid, result_key, result)
+                # Metrics
+                if result.result.score > 0:
+                    counter.increment('scored')
+                else:
+                    counter.increment('not_scored')
+            else:  # Task failed
+                LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+                            f"Client failed to complete the {service_name} task in {exec_time}ms")
 
-            # Metrics
-            if result.result.score > 0:
-                counter.increment('scored')
-            else:
-                counter.increment('not_scored')
-        else:  # Task failed
-            LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
-                        f"Client failed to complete the {service_name} task in {exec_time}ms")
+                error = Error(result)
 
-            error = Error(result)
+                service_tool_version_hash = hashlib.md5((error.response.service_tool_version.encode('utf-8'))).hexdigest()
+                task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
+                conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
 
-            service_tool_version_hash = hashlib.md5((error.response.service_tool_version.encode('utf-8'))).hexdigest()
-            task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
-            conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
+                error_key = error.build_key(conf_key)
+                self.dispatch_client.service_failed(task.sid, error_key, error)
 
-            error_key = error.build_key(conf_key)
-            self.dispatch_client.service_failed(task.sid, error_key, error)
+                # Metrics
+                if error.response.status == 'FAIL_RECOVERABLE':
+                    counter.increment('fail_recoverable')
+                else:
+                    counter.increment('fail_nonrecoverable')
 
-            # Metrics
-            if error.response.status == 'FAIL_RECOVERABLE':
-                counter.increment('fail_recoverable')
-            else:
-                counter.increment('fail_nonrecoverable')
-
-        # counter_timing.increment_execution_time('execution', exec_time)
-        self.report_active(client_info)
+            self.report_active(client_info)
+        except:
+            LOGGER.exception(f"Error receiving result from: {service_name}")
+            raise
 
     @authenticated_only
     def on_got_task(self, idle_time, client_info):
         service_name = client_info['service_name']
-        # counter_timing = MetricsFactory('service_timing', TimingMetrics, name=service_name, config=config)
-        # counter_timing.increment_execution_time('idle', idle_time)
         self.report_idle(client_info)
 
         LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
