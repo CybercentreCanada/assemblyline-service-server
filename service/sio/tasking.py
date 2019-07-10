@@ -91,9 +91,9 @@ class TaskingNamespace(BaseNamespace):
                     client_info_list = list(self.clients.values())
                     # LOGGER.debug(f"Doing background reporting round on {len(client_info_list)} clients")
                     for client_info in client_info_list:
-                        if client_info['id'] in self.banned_clients:
+                        if client_info['client_id'] in self.banned_clients:
                             self.report_active(client_info)
-                        elif client_info['id'] in self.available_clients.get(client_info['service_name'], {}):
+                        elif client_info['client_id'] in self.available_clients.get(client_info['service_name'], {}):
                             self.report_idle(client_info)
             except Exception:
                 LOGGER.exception('Report thread suffered an error')
@@ -110,8 +110,8 @@ class TaskingNamespace(BaseNamespace):
         _, counter_timing = self._get_counters(client_info)
         with self._metrics_lock:
             now = time.time()
-            delta = now - self._metrics_times.get(client_info['id'], now)
-            self._metrics_times[client_info['id']] = now
+            delta = now - self._metrics_times.get(client_info['client_id'], now)
+            self._metrics_times[client_info['client_id']] = now
             counter_timing.increment_execution_time(timer_label, delta)
 
     # noinspection PyBroadException
@@ -132,21 +132,14 @@ class TaskingNamespace(BaseNamespace):
 
         try:
             while True:
+                # Request a service task
                 task, first_issue = self.dispatch_client.request_work(service_name, timeout=1)
-                with self.connections_lock:
-                    clients = list(set(self.available_clients.get(service_name, [])).difference(set(self.banned_clients)))
-                    if len(clients) == 0:
-                        # TODO should we do the cache check before we give up for no clients? should this be down
-                        #      with the other connection_lock section?
-                        # We have no more client, put the task back and quit...
-                        if task:
-                            queue.push(task.as_primitives())
-                        break
 
                 if not task:
+                    # No task found in service queue
                     continue
 
-                # This is not the first time request_work has given us this task.
+                # This is not the first time request_work has given us this task
                 if not first_issue:
                     # TODO check if this job has timed out? Is it currently running? Do we have results?
                     pass
@@ -172,11 +165,21 @@ class TaskingNamespace(BaseNamespace):
                 # No luck with the cache, lets dispatch the task to a client
                 counter.increment('cache_miss')
 
-                # TODO Is this code threaded? If so, could available_clients and banned_clients could have changed
-                #      since we loaded it? If not, why are we locking?
-                client_id = random.choice(clients)
-                self.socketio.emit('got_task', task.as_primitives(), namespace=self.namespace, room=client_id)
+                # Choose service client from the latest list of all available clients
                 with self.connections_lock:
+                    clients = list(set(self.available_clients.get(service_name, [])).difference(set(self.banned_clients)))
+                    if len(clients) == 0:
+                        # We have no more client, put the task back and quit...
+                        if task:
+                            queue.push(task.as_primitives())
+                        break
+
+                    client_id = random.choice(clients)
+
+                    # Send the task to the service client
+                    self.socketio.emit('got_task', task.as_primitives(), namespace=self.namespace, room=client_id)
+
+                    # Add the service client to the list of banned clients, so that it doesn't receive anymore tasks
                     self.banned_clients.append(client_id)
 
                 LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
@@ -202,7 +205,7 @@ class TaskingNamespace(BaseNamespace):
             result['expiry_ts'] = expiry_ts
 
             if 'result' in result:  # Task completed successfully
-                LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+                LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
                             f"Client successfully completed the {service_name} task in {exec_time}ms")
 
                 result = Result(result)
@@ -219,7 +222,7 @@ class TaskingNamespace(BaseNamespace):
                 else:
                     counter.increment('not_scored')
             else:  # Task failed
-                LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+                LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
                             f"Client failed to complete the {service_name} task in {exec_time}ms")
 
                 error = Error(result)
@@ -247,13 +250,13 @@ class TaskingNamespace(BaseNamespace):
         service_name = client_info['service_name']
         self.report_idle(client_info)
 
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
                     f"Client was idle for {idle_time}ms and received the {service_name} task and started processing")
-        self._deactivate_client(client_info['id'])
+        self._deactivate_client(client_info['client_id'])
 
     @authenticated_only
     def on_wait_for_task(self, client_info):
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
                     f"Waiting for tasks in {client_info['service_name']} service queue...")
 
         self._activate_client(client_info)

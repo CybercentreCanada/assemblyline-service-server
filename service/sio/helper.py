@@ -15,7 +15,7 @@ datastore = forge.get_datastore()
 class HelperNamespace(BaseNamespace):
     @authenticated_only
     def on_get_classification_definition(self, client_info):
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
                     f"Sending classification definition to {client_info['service_name']} service client")
 
         return forge.get_classification().__dict__['original_definition']
@@ -23,7 +23,7 @@ class HelperNamespace(BaseNamespace):
     @authenticated_only
     def on_get_system_constants(self, client_info):
         constants = forge.get_constants()
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
                     f"Sending system constants to {client_info['service_name']} service client")
 
         return {
@@ -43,23 +43,23 @@ class HelperNamespace(BaseNamespace):
             # Save service delta
             datastore.service_delta.save(service.name, {'version': service.version})
             datastore.service_delta.commit()
-            LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
                         f"New service registered: {service.name}_{service.version}")
 
         if not datastore.service.get_if_exists(f'{service.name}_{service.version}'):
             # Save service
             datastore.service.save(f'{service.name}_{service.version}', service)
             datastore.service.commit()
-            LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
                         f"New service version registered: {service.name}_{service.version}")
-            self.socketio.emit('quit', namespace=self.namespace, room=client_info['id'])
+            self.socketio.emit('quit', namespace=self.namespace, room=client_info['client_id'])
             keep_alive = False
 
         return keep_alive
 
     @authenticated_only
     def on_start_download(self, sha256, file_path, client_info):
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
                     f"Sending file to {client_info['service_name']} service client, SHA256: {sha256}")
 
         self.socketio.start_background_task(target=self.send_file, sha256=sha256, file_path=file_path, client_info=client_info)
@@ -67,7 +67,7 @@ class HelperNamespace(BaseNamespace):
     @authenticated_only
     def on_upload_file(self, data, classification, sha256, ttl, client_info):
         service_name = client_info['service_name']
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
                     f"Received file from client, SHA256: {sha256}")
 
         temp_dir = os.path.join(tempfile.gettempdir(), service_name)
@@ -103,7 +103,7 @@ class HelperNamespace(BaseNamespace):
                     if (file_size < chunk_size) or ((offset + chunk_size) >= file_size):
                         last_chunk = True
 
-                    self.socketio.emit('write_file_chunk', (file_path, offset, chunk, last_chunk), namespace=self.namespace, room=client_info['id'])
+                    self.socketio.emit('write_file_chunk', (file_path, offset, chunk, last_chunk), namespace=self.namespace, room=client_info['client_id'])
                     offset += chunk_size
         finally:
             temp_file.close()

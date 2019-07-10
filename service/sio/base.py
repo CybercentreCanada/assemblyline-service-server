@@ -57,7 +57,7 @@ class BaseNamespace(Namespace):
         with self.connections_lock:
             if client_info['service_name'] not in self.available_clients:
                 self.available_clients[client_info['service_name']] = []
-            self.available_clients[client_info['service_name']].append(client_info['id'])
+            self.available_clients[client_info['service_name']].append(client_info['client_id'])
 
     def _deactivate_client(self, client_id):
         with self.connections_lock:
@@ -78,9 +78,9 @@ class BaseNamespace(Namespace):
             return
 
         with self.connections_lock:
-            self.clients[client_info['id']] = client_info
+            self.clients[client_info['client_id']] = client_info
 
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['id']} - "
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
                     f"New connection established from: {client_info['ip']}")
 
     def on_disconnect(self):
@@ -109,12 +109,14 @@ def get_client_info(request_p):
     if AUTH_KEY != auth_key:
         raise AuthenticationFailure(f"Client key does not match server key. Connection refused from: {src_ip}")
 
+    container_id = request_p.headers.get('Container-Id', None)
     service_name = request_p.headers.get('Service-Name', None)
     service_version = request_p.headers.get('Service-Version', None)
     service_tool_version = request_p.headers.get('Service-Tool-Version', None)
 
     return {
-        'id': client_id,
+        'client_id': client_id,
+        'container_id': container_id,
         'ip': src_ip,
         'service_name': service_name,
         'service_version': service_version,
