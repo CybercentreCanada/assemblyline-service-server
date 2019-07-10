@@ -1,10 +1,9 @@
-import logging
 import hashlib
 import json
+import logging
 import random
 import threading
 import time
-
 
 from al_core.dispatching.client import DispatchClient
 from al_core.dispatching.dispatcher import service_queue_name
@@ -16,6 +15,7 @@ from assemblyline.odm.messages.service_timing_heartbeat import Metrics as Timing
 from assemblyline.odm.messages.task import Task
 from assemblyline.odm.models.error import Error
 from assemblyline.odm.models.result import Result
+from assemblyline.odm.models.service_client import ServiceClient
 from assemblyline.remote.datatypes.queues.named import NamedQueue
 from service.sio.base import BaseNamespace, authenticated_only, LOGGER, get_request_id, request
 
@@ -56,12 +56,12 @@ class TaskingNamespace(BaseNamespace):
         with self._metrics_lock:
             self._metrics_times.pop(client_id, None)
             if 'tasking_counters' in client_info:
-                client_info['tasking_counters'][0].stop()
-                client_info['tasking_counters'][1].stop()
+                client_info.tasking_counters[0].stop()
+                client_info.tasking_counters[1].stop()
 
         super().on_disconnect()
 
-    def _get_counters(self, client_info):
+    def _get_counters(self, client_info: ServiceClient):
         """Each pair of metrics objects must have a correspondence with a client.
 
         Creating extra metrics objects causes the rest of the system to see extra false
@@ -69,13 +69,13 @@ class TaskingNamespace(BaseNamespace):
         if they are cleaned up.
         """
         with self._metrics_lock:
-            if 'tasking_counters' not in client_info:
-                service_name = client_info['service_name']
-                client_info['tasking_counters'] = (
+            if not client_info.tasking_counters:
+                service_name = client_info.service_name
+                client_info.tasking_counters = (
                     MetricsFactory('service', Metrics, name=service_name, config=config),
                     MetricsFactory('service_timing', TimingMetrics, name=service_name, config=config),
                 )
-            return client_info['tasking_counters']
+            return client_info.tasking_counters
 
     def _do_reports_between_events(self):
         """A daemon that continues to repeat the last status message for all clients.
@@ -91,34 +91,34 @@ class TaskingNamespace(BaseNamespace):
                     client_info_list = list(self.clients.values())
                     # LOGGER.debug(f"Doing background reporting round on {len(client_info_list)} clients")
                     for client_info in client_info_list:
-                        if client_info['client_id'] in self.banned_clients:
+                        if client_info.client_id in self.banned_clients:
                             self.report_active(client_info)
-                        elif client_info['client_id'] in self.available_clients.get(client_info['service_name'], {}):
+                        elif client_info.client_id in self.available_clients.get(client_info.service_name, {}):
                             self.report_idle(client_info)
             except Exception:
                 LOGGER.exception('Report thread suffered an error')
 
-    def report_idle(self, client_info):
+    def report_idle(self, client_info: ServiceClient):
         """Tell the metrics system that this client has been idle since the last report."""
         self._report_metrics(client_info, 'idle')
 
-    def report_active(self, client_info):
+    def report_active(self, client_info: ServiceClient):
         """Tell the metrics system that this client has been busy since the last report."""
         self._report_metrics(client_info, 'execution')
 
-    def _report_metrics(self, client_info, timer_label):
+    def _report_metrics(self, client_info: ServiceClient, timer_label):
         _, counter_timing = self._get_counters(client_info)
         with self._metrics_lock:
             now = time.time()
-            delta = now - self._metrics_times.get(client_info['client_id'], now)
-            self._metrics_times[client_info['client_id']] = now
+            delta = now - self._metrics_times.get(client_info.client_id, now)
+            self._metrics_times[client_info.client_id] = now
             counter_timing.increment_execution_time(timer_label, delta)
 
     # noinspection PyBroadException
-    def get_task_for_service(self, client_info):
-        service_name = client_info['service_name']
-        service_version = client_info['service_version']
-        service_tool_version = client_info['service_tool_version']
+    def get_task_for_service(self, client_info: ServiceClient):
+        service_name = client_info.service_name
+        service_version = client_info.service_version
+        service_tool_version = client_info.service_tool_version
 
         with self.connections_lock:
             if service_name in self.watch_threads:
@@ -195,17 +195,17 @@ class TaskingNamespace(BaseNamespace):
                         f"{service_name} service queue, exiting thread...")
 
     @authenticated_only
-    def on_done_task(self, exec_time, task, result, client_info):
+    def on_done_task(self, exec_time, task, result, client_info: ServiceClient):
         service_name = 'unknown'
         try:
-            service_name = client_info['service_name']
+            service_name = client_info.service_name
             counter, _ = self._get_counters(client_info)
             task = Task(task)
             expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
             result['expiry_ts'] = expiry_ts
 
             if 'result' in result:  # Task completed successfully
-                LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
+                LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
                             f"Client successfully completed the {service_name} task in {exec_time}ms")
 
                 result = Result(result)
@@ -222,7 +222,7 @@ class TaskingNamespace(BaseNamespace):
                 else:
                     counter.increment('not_scored')
             else:  # Task failed
-                LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
+                LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
                             f"Client failed to complete the {service_name} task in {exec_time}ms")
 
                 error = Error(result)
@@ -246,18 +246,18 @@ class TaskingNamespace(BaseNamespace):
             raise
 
     @authenticated_only
-    def on_got_task(self, idle_time, client_info):
-        service_name = client_info['service_name']
+    def on_got_task(self, idle_time, client_info: ServiceClient):
+        service_name = client_info.service_name
         self.report_idle(client_info)
 
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
                     f"Client was idle for {idle_time}ms and received the {service_name} task and started processing")
-        self._deactivate_client(client_info['client_id'])
+        self._deactivate_client(client_info.client_id)
 
     @authenticated_only
-    def on_wait_for_task(self, client_info):
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
-                    f"Waiting for tasks in {client_info['service_name']} service queue...")
+    def on_wait_for_task(self, client_info: ServiceClient):
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
+                    f"Waiting for tasks in {client_info.service_name} service queue...")
 
         self._activate_client(client_info)
 

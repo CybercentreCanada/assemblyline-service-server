@@ -6,7 +6,7 @@ from flask import request
 from flask_socketio import Namespace, disconnect
 
 from assemblyline.common import forge
-from assemblyline.common.str_utils import StringTable
+from assemblyline.odm.models.service_client import ServiceClient
 from assemblyline.remote.datatypes.hash import Hash
 from service.config import AUTH_KEY
 
@@ -18,14 +18,6 @@ KV_SESSION = Hash('flask_sessions',
                   db=config.core.redis.nonpersistent.db)
 
 LOGGER = logging.getLogger('assemblyline.svc.socketio')
-
-STATUS = StringTable('STATUS', [
-    ('INITIALIZING', 0),
-    ('WAITING', 1),
-    ('PROCESSING', 2),
-    ('RESULT_FOUND', 3),
-    ('ERROR_FOUND', 4),
-])
 
 class AuthenticationFailure(Exception):
     pass
@@ -53,11 +45,11 @@ class BaseNamespace(Namespace):
         self.banned_clients = []
         super().__init__(namespace=namespace)
 
-    def _activate_client(self, client_info):
+    def _activate_client(self, client_info: ServiceClient):
         with self.connections_lock:
-            if client_info['service_name'] not in self.available_clients:
-                self.available_clients[client_info['service_name']] = []
-            self.available_clients[client_info['service_name']].append(client_info['client_id'])
+            if client_info.service_name not in self.available_clients:
+                self.available_clients[client_info.service_name] = []
+            self.available_clients[client_info.service_name].append(client_info.client_id)
 
     def _deactivate_client(self, client_id):
         with self.connections_lock:
@@ -78,10 +70,10 @@ class BaseNamespace(Namespace):
             return
 
         with self.connections_lock:
-            self.clients[client_info['client_id']] = client_info
+            self.clients[client_info.client_id] = client_info
 
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info['client_id']} - "
-                    f"New connection established from: {client_info['ip']}")
+        LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
+                    f"New connection established from: {client_info.ip}")
 
     def on_disconnect(self):
         client_id = get_request_id(request)
@@ -91,7 +83,7 @@ class BaseNamespace(Namespace):
             if client_id in self.clients:
                 client_info = self.clients[client_id]
                 LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
-                            f"Client disconnected from: {client_info['ip']}")
+                            f"Client disconnected from: {client_info.ip}")
 
             self.clients.pop(client_id, None)
 
@@ -102,7 +94,7 @@ def get_request_id(request_p):
     return None
 
 
-def get_client_info(request_p):
+def get_client_info(request_p) -> ServiceClient:
     client_id = get_request_id(request_p)
     src_ip = request_p.headers.get('X-Forwarded-For', request_p.remote_addr)
     auth_key = request_p.headers.get('Service-API-Auth-Key', None)
@@ -114,12 +106,11 @@ def get_client_info(request_p):
     service_version = request_p.headers.get('Service-Version', None)
     service_tool_version = request_p.headers.get('Service-Tool-Version', None)
 
-    return {
+    return ServiceClient({
         'client_id': client_id,
         'container_id': container_id,
         'ip': src_ip,
         'service_name': service_name,
         'service_version': service_version,
         'service_tool_version': service_tool_version,
-        'status': STATUS.INITIALIZING
-    }
+    })
