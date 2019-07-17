@@ -210,7 +210,10 @@ class TaskingNamespace(BaseNamespace):
 
                 result = Result(result)
 
-                service_tool_version_hash = hashlib.md5((result.response.service_tool_version.encode('utf-8'))).hexdigest()
+                if result.response.service_tool_version is not None:
+                    service_tool_version_hash = hashlib.md5((result.response.service_tool_version.encode('utf-8'))).hexdigest()
+                else:
+                    service_tool_version_hash = ''
                 task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
                 conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
                 result_key = result.build_key(conf_key)
