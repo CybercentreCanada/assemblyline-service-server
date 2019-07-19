@@ -1,6 +1,7 @@
 import functools
 import logging
 import threading
+from typing import Dict, List
 
 from flask import request
 from flask_socketio import Namespace, disconnect
@@ -18,6 +19,7 @@ KV_SESSION = Hash('flask_sessions',
                   db=config.core.redis.nonpersistent.db)
 
 LOGGER = logging.getLogger('assemblyline.svc.socketio')
+
 
 class AuthenticationFailure(Exception):
     pass
@@ -40,9 +42,9 @@ def authenticated_only(f):
 class BaseNamespace(Namespace):
     def __init__(self, namespace=None):
         self.connections_lock = threading.RLock()
-        self.clients = {}
-        self.available_clients = {}
-        self.banned_clients = []
+        self.clients: Dict[str: ServiceClient] = {}
+        self.available_clients: Dict[str: List[str]] = {}
+        self.banned_clients: List[str] = []
         super().__init__(namespace=namespace)
 
     def _activate_client(self, client_info: ServiceClient):
@@ -101,16 +103,18 @@ def get_client_info(request_p) -> ServiceClient:
     if AUTH_KEY != auth_key:
         raise AuthenticationFailure(f"Client key does not match server key. Connection refused from: {src_ip}")
 
-    container_id = request_p.headers.get('Container-Id', None)
-    service_name = request_p.headers.get('Service-Name', None)
-    service_version = request_p.headers.get('Service-Version', None)
-    service_tool_version = request_p.headers.get('Service-Tool-Version', None)
+    container_id = request_p.headers['Container-Id']
+    service_name = request_p.headers['Service-Name']
+    service_version = request_p.headers['Service-Version']
+    service_tool_version = request_p.headers['Service-Tool-Version']
+    service_timeout = request_p.headers['Service-Timeout']
 
-    return ServiceClient({
-        'client_id': client_id,
-        'container_id': container_id,
-        'ip': src_ip,
-        'service_name': service_name,
-        'service_version': service_version,
-        'service_tool_version': service_tool_version,
-    })
+    return ServiceClient(dict(
+        client_id=client_id,
+        container_id=container_id,
+        ip=src_ip,
+        service_name=service_name,
+        service_version=service_version,
+        service_tool_version=service_tool_version,
+        service_timeout=service_timeout,
+    ))

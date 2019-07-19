@@ -5,6 +5,8 @@ import random
 import threading
 import time
 
+from flask import request
+
 from al_core.dispatching.client import DispatchClient
 from al_core.dispatching.dispatcher import service_queue_name
 from assemblyline.common import forge
@@ -15,9 +17,9 @@ from assemblyline.odm.messages.service_timing_heartbeat import Metrics as Timing
 from assemblyline.odm.messages.task import Task
 from assemblyline.odm.models.error import Error
 from assemblyline.odm.models.result import Result
-from assemblyline.odm.models.service_client import ServiceClient
+from assemblyline.odm.models.service_client import ServiceClient, Current
 from assemblyline.remote.datatypes.queues.named import NamedQueue
-from service.sio.base import BaseNamespace, authenticated_only, LOGGER, get_request_id, request
+from service.sio.base import BaseNamespace, authenticated_only, LOGGER, get_request_id
 
 config = forge.get_config()
 datastore = forge.get_datastore()
@@ -139,11 +141,6 @@ class TaskingNamespace(BaseNamespace):
                     # No task found in service queue
                     continue
 
-                # This is not the first time request_work has given us this task
-                if not first_issue:
-                    # TODO check if this job has timed out? Is it currently running? Do we have results?
-                    pass
-
                 counter.increment('execute')
 
                 service_tool_version_hash = hashlib.md5((service_tool_version.encode('utf-8'))).hexdigest()
@@ -161,6 +158,18 @@ class TaskingNamespace(BaseNamespace):
                     if result:
                         self.dispatch_client.service_finished(task.sid, result_key, result)
                         continue
+
+                # This is not the first time request_work has given us this task
+                if not first_issue:
+                    # Check if this task is currently running in a client
+                    for client in self.clients:
+                        if client.current.status == 'PROCESSING' and task.sid == client.current.task_sid:
+                            # Task is currently being processed by a client
+                            # Check if this task has timed out
+                            if now_as_iso() <= client.current.task_timeout:
+                                # Task has not yet timed out
+                                # Continue and do nothing with the task
+                                continue
 
                 # No luck with the cache, lets dispatch the task to a client
                 counter.increment('cache_miss')
@@ -182,6 +191,13 @@ class TaskingNamespace(BaseNamespace):
                     # Add the service client to the list of banned clients, so that it doesn't receive anymore tasks
                     self.banned_clients.append(client_id)
 
+                    service_timeout = self.clients[client_id].service_timeout
+                    self.clients[client_id].current = Current(dict(
+                        status='PROCESSING',
+                        task_sid=task.sid,
+                        task_timeout=now_as_iso(service_timeout),
+                    ))
+
                 LOGGER.info(f"SocketIO:{self.namespace} - {client_id} - "
                             f"Sending {service_name} service task to client")
 
@@ -195,7 +211,7 @@ class TaskingNamespace(BaseNamespace):
                         f"{service_name} service queue, exiting thread...")
 
     @authenticated_only
-    def on_done_task(self, exec_time, task, result, client_info: ServiceClient):
+    def on_done_task(self, exec_time: int, task: dict, result: dict, client_info: ServiceClient):
         service_name = 'unknown'
         try:
             service_name = client_info.service_name
@@ -265,3 +281,9 @@ class TaskingNamespace(BaseNamespace):
         self._activate_client(client_info)
 
         self.socketio.start_background_task(target=self.get_task_for_service, client_info=client_info)
+
+        self.clients[client_info.client_id].current = Current(dict(
+            status='WAITING',
+            task_sid=None,
+            task_start_time=None,
+        ))
