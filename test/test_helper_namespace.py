@@ -2,6 +2,7 @@ import pytest
 import socketio
 
 from assemblyline.common import forge
+from assemblyline.odm import randomizer
 from assemblyline.odm.random_data import create_users, wipe_users
 from service.config import AUTH_KEY
 
@@ -23,7 +24,12 @@ def datastore(request):
 def sio():
     sio = socketio.Client()
     headers = {
-        'Service-API-Auth-Key': AUTH_KEY
+        'Container-Id': randomizer.get_random_hash(12),
+        'Service-API-Auth-Key': AUTH_KEY,
+        'Service-Name': randomizer.get_random_service_name(),
+        'Service-Version': randomizer.get_random_service_version(),
+        'Service-Tool-Version': randomizer.get_random_hash(64),
+        'Service-Timeout': 300,
     }
 
     sio.connect('http://localhost:5003', namespaces=['/helper'], headers=headers)
