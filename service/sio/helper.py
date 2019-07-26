@@ -1,10 +1,12 @@
 import os
 import shutil
 import tempfile
+from typing import List
 
 from assemblyline.common import forge
 from assemblyline.common import identify
 from assemblyline.common.isotime import now_as_iso
+from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.service import Service
 from assemblyline.odm.models.service_client import ServiceClient
 from service.sio.base import BaseNamespace, authenticated_only, LOGGER
@@ -57,6 +59,16 @@ class HelperNamespace(BaseNamespace):
             keep_alive = False
 
         return keep_alive
+
+    @authenticated_only
+    def on_save_heuristics(self, heuristics: List[dict], client_info: ServiceClient):
+        for heuristic in heuristics:
+            heuristic = Heuristic(heuristic)
+            if not datastore.heuristic.get_if_exists(heuristic.heur_id):
+                datastore.heuristic.save(heuristic.heur_id, heuristic)
+                datastore.heuristic.commit()
+                LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
+                            f"New {client_info.service_name} service Heuristic saved: {heuristic.heur_id}")
 
     @authenticated_only
     def on_start_download(self, sha256: str, file_path: str, client_info: ServiceClient):

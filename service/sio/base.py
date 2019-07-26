@@ -8,15 +8,9 @@ from flask_socketio import Namespace, disconnect
 
 from assemblyline.common import forge
 from assemblyline.odm.models.service_client import ServiceClient
-from assemblyline.remote.datatypes.hash import Hash
 from service.config import AUTH_KEY
 
 config = forge.get_config()
-
-KV_SESSION = Hash('flask_sessions',
-                  host=config.core.redis.nonpersistent.host,
-                  port=config.core.redis.nonpersistent.port,
-                  db=config.core.redis.nonpersistent.db)
 
 LOGGER = logging.getLogger('assemblyline.svc.socketio')
 
