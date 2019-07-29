@@ -29,7 +29,7 @@ def sio():
         'Service-Name': randomizer.get_random_service_name(),
         'Service-Version': randomizer.get_random_service_version(),
         'Service-Tool-Version': randomizer.get_random_hash(64),
-        'Service-Timeout': 300,
+        'Service-Timeout': str(300),
     }
 
     sio.connect('http://localhost:5003', namespaces=['/helper'], headers=headers)

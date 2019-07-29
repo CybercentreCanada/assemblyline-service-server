@@ -100,7 +100,7 @@ def get_client_info(request_p) -> ServiceClient:
     container_id = request_p.headers['Container-Id']
     service_name = request_p.headers['Service-Name']
     service_version = request_p.headers['Service-Version']
-    service_tool_version = request_p.headers['Service-Tool-Version']
+    service_tool_version = request_p.headers.get('Service-Tool-Version', None)
     service_timeout = request_p.headers['Service-Timeout']
 
     return ServiceClient(dict(

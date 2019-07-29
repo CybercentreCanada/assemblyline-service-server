@@ -30,11 +30,8 @@ class HelperNamespace(BaseNamespace):
                     f"Sending system constants to {client_info.service_name} service client")
 
         return {
-            'FILE_SUMMARY': constants.FILE_SUMMARY,
             'RECOGNIZED_TYPES': constants.RECOGNIZED_TYPES,
             'RULE_PATH': constants.RULE_PATH,
-            'STANDARD_TAG_CONTEXTS': constants.STANDARD_TAG_CONTEXTS,
-            'STANDARD_TAG_TYPES': constants.STANDARD_TAG_TYPES,
         }
 
     @authenticated_only
@@ -62,6 +59,8 @@ class HelperNamespace(BaseNamespace):
 
     @authenticated_only
     def on_save_heuristics(self, heuristics: List[dict], client_info: ServiceClient):
+        new_heuristic = False
+
         for heuristic in heuristics:
             heuristic = Heuristic(heuristic)
             if not datastore.heuristic.get_if_exists(heuristic.heur_id):
@@ -69,6 +68,9 @@ class HelperNamespace(BaseNamespace):
                 datastore.heuristic.commit()
                 LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
                             f"New {client_info.service_name} service Heuristic saved: {heuristic.heur_id}")
+                new_heuristic = True
+
+        return new_heuristic
 
     @authenticated_only
     def on_start_download(self, sha256: str, file_path: str, client_info: ServiceClient):

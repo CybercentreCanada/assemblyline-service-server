@@ -143,7 +143,10 @@ class TaskingNamespace(BaseNamespace):
 
                 counter.increment('execute')
 
-                service_tool_version_hash = hashlib.md5((service_tool_version.encode('utf-8'))).hexdigest()
+                if service_tool_version is not None:
+                    service_tool_version_hash = hashlib.md5((service_tool_version.encode('utf-8'))).hexdigest()
+                else:
+                    service_tool_version_hash = ''
                 task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
                 conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
 
@@ -166,7 +169,7 @@ class TaskingNamespace(BaseNamespace):
                         if client.current.status == 'PROCESSING' and task.sid == client.current.task_sid:
                             # Task is currently being processed by a client
                             # Check if this task has timed out
-                            if now_as_iso() <= client.current.task_timeout:
+                            if now_as_iso() < client.current.task_timeout:
                                 # Task has not yet timed out
                                 # Continue and do nothing with the task
                                 continue
@@ -285,5 +288,5 @@ class TaskingNamespace(BaseNamespace):
         self.clients[client_info.client_id].current = Current(dict(
             status='WAITING',
             task_sid=None,
-            task_start_time=None,
+            task_timeout=None,
         ))
