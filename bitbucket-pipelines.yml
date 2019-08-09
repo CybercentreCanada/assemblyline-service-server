@@ -22,10 +22,10 @@ pipelines:
             - git clone git@bitbucket.org:cse-assemblyline/alv4.git ~/alv4
             - cd ~/alv4 && pwd
             # Try to checkout the matching branch, if the command fails, don't care.
-            - git checkout -B $BITBUCKET_BRANCH  # Try to match our current branch
+            - git checkout -b $BITBUCKET_BRANCH -t origin/$BITBUCKET_BRANCH || true
             - pip install -e .
-            - cd - && pwd
             # Install and test al service server
+            - cd $BITBUCKET_CLONE_DIR && pwd
             - pip install -r test/requirements.txt
             - pip install -e .
             - python3 -m service.app &
