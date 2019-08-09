@@ -98,7 +98,7 @@ class TaskingNamespace(BaseNamespace):
 
             for service_name, service in service_queues.items():
                 if not service or not service.enabled:
-                    queue = NamedQueue(service, private=True)
+                    queue = NamedQueue(service_name, private=True)
                     while queue.length() != 0:
                         task, _ = self.dispatch_client.request_work(service.name, blocking=False)
                         error = Error(dict(
