@@ -18,6 +18,7 @@ from assemblyline.odm.messages.task import Task
 from assemblyline.odm.models.error import Error
 from assemblyline.odm.models.result import Result
 from assemblyline.odm.models.service_client import ServiceClient, Current
+from assemblyline.remote.datatypes import get_client
 from assemblyline.remote.datatypes.queues.named import NamedQueue
 from service.sio.base import BaseNamespace, authenticated_only, LOGGER, get_request_id
 
@@ -39,9 +40,22 @@ class TaskingNamespace(BaseNamespace):
 
         # A background thread that continues to push metrics about client busy/idle status
         # while the foreground thread is blocking on client events
-        thread = threading.Thread(target=self._do_reports_between_events)
-        thread.daemon = True
-        thread.start()
+        metrics_thread = threading.Thread(target=self._do_reports_between_events)
+        metrics_thread.daemon = True
+        metrics_thread.start()
+
+        self._redis = get_client(
+            db=config.core.redis.nonpersistent.db,
+            host=config.core.redis.nonpersistent.host,
+            port=config.core.redis.nonpersistent.port,
+            private=False,
+        )
+
+        # A background thread that periodically checks the status of all the services
+        # and cleans up any service task queues when a service is disabled/deleted
+        cleanup_thread = threading.Thread(target=self._cleanup_service_tasks)
+        cleanup_thread.daemon = True
+        cleanup_thread.start()
 
     def on_disconnect(self):
         """When disconnecting we also need to stop the metrics counters.
@@ -62,6 +76,53 @@ class TaskingNamespace(BaseNamespace):
                 client_info.tasking_counters[1].stop()
 
         super().on_disconnect()
+
+    def _cleanup_service_tasks(self):
+        """A daemon that cleans up tasks from the service queues when a service is disabled/deleted.
+
+        When a service is turned off by the orchestrator or deleted by the user, the service task queue needs to be
+        emptied. The status of all the services will be periodically checked and any service that is found to be
+        disabled or deleted for which a service queue exists, the dispatcher will be informed that the task(s)
+        had an error.
+        """
+        # Get an initial list of all the service queues
+        service_queues = {queue.lstrip('service-queue-'): None for queue in self._redis.keys(service_queue_name('*'))}
+
+        while True:
+            # Reset the status of the service queues
+            service_queues = {service_name: False for service_name in service_queues}
+
+            # Update the service queue status based on current list of services
+            for service in datastore.list_all_services(full=True):
+                service_queues[service.name] = service
+
+            for service_name, service in service_queues.items():
+                if not service or not service.enabled:
+                    queue = NamedQueue(service, private=True)
+                    while queue.length() != 0:
+                        task, _ = self.dispatch_client.request_work(service.name, blocking=False)
+                        error = Error(dict(
+                            created='NOW',
+                            expiry_ts=now_as_iso(task.ttl * 24 * 60 * 60),
+                            response=dict(
+                                message='',
+                                service_name=task.service_name,
+                                service_version=service.version or ' ',
+                                status='FAIL_NONRECOVERABLE',
+                            ),
+                            sha256=task.fileinfo.sha256,
+                            type="TASK PRE-EMPTED",
+                        ))
+
+                        service_tool_version_hash = ''
+                        task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
+                        conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
+                        error_key = error.build_key(conf_key)
+
+                        self.dispatch_client.service_failed(task.sid, error_key, error)
+
+            # Wait 1 min before checking status of all services again
+            time.sleep(60)
 
     def _get_counters(self, client_info: ServiceClient):
         """Each pair of metrics objects must have a correspondence with a client.
@@ -183,7 +244,7 @@ class TaskingNamespace(BaseNamespace):
                     if len(clients) == 0:
                         # We have no more client, put the task back and quit...
                         if task:
-                            queue.push(task.as_primitives())
+                            queue.unpop(task.as_primitives())
                         break
 
                     client_id = random.choice(clients)
@@ -220,8 +281,6 @@ class TaskingNamespace(BaseNamespace):
             service_name = client_info.service_name
             counter, _ = self._get_counters(client_info)
             task = Task(task)
-            expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
-            result['expiry_ts'] = expiry_ts
 
             if 'result' in result:  # Task completed successfully
                 LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
@@ -249,7 +308,10 @@ class TaskingNamespace(BaseNamespace):
 
                 error = Error(result)
 
-                service_tool_version_hash = hashlib.md5((error.response.service_tool_version.encode('utf-8'))).hexdigest()
+                if error.response.service_tool_version is not None:
+                    service_tool_version_hash = hashlib.md5((error.response.service_tool_version.encode('utf-8'))).hexdigest()
+                else:
+                    service_tool_version_hash = ''
                 task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
                 conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
 
