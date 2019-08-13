@@ -3,12 +3,27 @@ import random
 import pytest
 import socketio
 
+from assemblyline.common import forge
 from assemblyline.common.classification import Classification
 from assemblyline.odm import randomizer
 from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.service import Service
+from assemblyline.odm.random_data import create_users, wipe_users
 from assemblyline.odm.randomizer import random_model_obj
 from service.config import AUTH_KEY
+
+ds = forge.get_datastore()
+
+
+def purge_socket():
+    wipe_users(ds)
+
+
+@pytest.fixture(scope="module")
+def datastore(request):
+    create_users(ds)
+    request.addfinalizer(purge_socket)
+    return ds
 
 
 @pytest.fixture(scope="function")
@@ -28,7 +43,7 @@ def sio():
     return sio
 
 
-def test_register_service(sio):
+def test_register_service(sio, datastore):
     def callback_register_service_new(keep_alive):
         assert keep_alive is False
 
@@ -43,7 +58,7 @@ def test_register_service(sio):
         sio.disconnect()
 
 
-def test_get_classification_definition(sio):
+def test_get_classification_definition(sio, datastore):
     def callback_get_classification_definition(classification_definition):
         assert Classification(classification_definition)
 
@@ -63,7 +78,7 @@ def test_get_classification_definition(sio):
 #         sio.disconnect()
 
 
-def test_save_heuristics(sio):
+def test_save_heuristics(sio, datastore):
     def callback_save_heuristics_new(new):
         assert new is True
 
@@ -78,11 +93,11 @@ def test_save_heuristics(sio):
         sio.disconnect()
 
 
-# def test_start_download(sio):
+# def test_start_download(sio, datastore):
 #     # TODO
 #     pass
 #
 #
-# def test_upload_file(sio):
+# def test_upload_file(sio, datastore):
 #     # TODO
 #     pass
