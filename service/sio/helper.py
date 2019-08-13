@@ -52,7 +52,6 @@ class HelperNamespace(BaseNamespace):
             datastore.service.commit()
             LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
                         f"New service version registered: {service.name}_{service.version}")
-            self.socketio.emit('quit', namespace=self.namespace, room=client_info.client_id)
             keep_alive = False
 
         return keep_alive

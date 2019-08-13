@@ -71,7 +71,7 @@ class TaskingNamespace(BaseNamespace):
 
         with self._metrics_lock:
             self._metrics_times.pop(client_id, None)
-            if 'tasking_counters' in client_info:
+            if client_info.tasking_counters:
                 client_info.tasking_counters[0].stop()
                 client_info.tasking_counters[1].stop()
 
