@@ -9,12 +9,12 @@ from flask import request
 from requests_toolbelt import MultipartEncoder
 from werkzeug.datastructures import FileStorage
 
+from al_service_server.api.base import make_api_response, make_subapi_blueprint, stream_multipart_response
 from assemblyline.common import forge
 from assemblyline.common import identify
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.odm.messages.task import Task
 from assemblyline.odm.models.result import Result
-from service.api.base import make_api_response, make_subapi_blueprint, stream_multipart_response
 
 SUB_API = 'file'
 

@@ -3,13 +3,13 @@ import shutil
 import tempfile
 from typing import List
 
+from al_service_server.sio.base import BaseNamespace, authenticated_only, LOGGER
 from assemblyline.common import forge
 from assemblyline.common import identify
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.service import Service
 from assemblyline.odm.models.service_client import ServiceClient
-from service.sio.base import BaseNamespace, authenticated_only, LOGGER
 
 filestore = forge.get_filestore()
 datastore = forge.get_datastore()

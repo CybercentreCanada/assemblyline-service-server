@@ -28,7 +28,7 @@ pipelines:
             - cd $BITBUCKET_CLONE_DIR && pwd
             - pip install -r test/requirements.txt
             - pip install -e .
-            - python3 -m service.app &
+            - python3 -m al_service_server.app &
             - pytest -rsx -vv
           services: &services
             - elasticsearch
@@ -62,7 +62,7 @@ pipelines:
               - mkdir -p /var/cache/assemblyline/
               - cp test/bitbucket/config.yml /etc/assemblyline
               - pip install -r test/requirements.txt
-              - python3 -m service.app &
+              - python3 -m al_service_server.app &
               - pytest -rsx -vv
             services: *services
 #        - step:

@@ -9,6 +9,7 @@ from flask import request
 
 from al_core.dispatching.client import DispatchClient
 from al_core.dispatching.dispatcher import service_queue_name
+from al_service_server.sio.base import BaseNamespace, authenticated_only, LOGGER, get_request_id
 from assemblyline.common import forge
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.common.metrics import MetricsFactory
@@ -20,7 +21,6 @@ from assemblyline.odm.models.result import Result
 from assemblyline.odm.models.service_client import ServiceClient, Current
 from assemblyline.remote.datatypes import get_client
 from assemblyline.remote.datatypes.queues.named import NamedQueue
-from service.sio.base import BaseNamespace, authenticated_only, LOGGER, get_request_id
 
 config = forge.get_config()
 datastore = forge.get_datastore()

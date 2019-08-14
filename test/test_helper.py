@@ -3,6 +3,7 @@ import random
 import pytest
 import socketio
 
+from al_service_server.config import AUTH_KEY
 from assemblyline.common import forge
 from assemblyline.common.classification import Classification
 from assemblyline.odm import randomizer
@@ -10,7 +11,6 @@ from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.service import Service
 from assemblyline.odm.random_data import create_users, wipe_users
 from assemblyline.odm.randomizer import random_model_obj
-from service.config import AUTH_KEY
 
 ds = forge.get_datastore()
 
