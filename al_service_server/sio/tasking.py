@@ -86,7 +86,7 @@ class TaskingNamespace(BaseNamespace):
         had an error.
         """
         # Get an initial list of all the service queues
-        service_queues = {queue.lstrip('service-queue-'): None for queue in self._redis.keys(service_queue_name('*'))}
+        service_queues = {queue.decode('utf-8').lstrip('service-queue-'): None for queue in self._redis.keys(service_queue_name('*'))}
 
         while True:
             # Reset the status of the service queues
@@ -226,7 +226,7 @@ class TaskingNamespace(BaseNamespace):
                 # This is not the first time request_work has given us this task
                 if not first_issue:
                     # Check if this task is currently running in a client
-                    for client in self.clients:
+                    for client in self.clients.values():
                         if client.current.status == 'PROCESSING' and task.sid == client.current.task_sid:
                             # Task is currently being processed by a client
                             # Check if this task has timed out
