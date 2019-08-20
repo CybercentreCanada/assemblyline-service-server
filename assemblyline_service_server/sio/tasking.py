@@ -8,7 +8,7 @@ import time
 from flask import request
 
 from assemblyline.common import forge
-from assemblyline.common.isotime import now_as_iso
+from assemblyline.common.isotime import now_as_iso, now
 from assemblyline.common.metrics import MetricsFactory
 from assemblyline.odm.messages.service_heartbeat import Metrics
 from assemblyline.odm.messages.service_timing_heartbeat import Metrics as TimingMetrics
@@ -230,7 +230,7 @@ class TaskingNamespace(BaseNamespace):
                         if client.current.status == 'PROCESSING' and task.sid == client.current.task_sid:
                             # Task is currently being processed by a client
                             # Check if this task has timed out
-                            if now_as_iso() < client.current.task_timeout:
+                            if client.current.task_timeout and now() < client.current.task_timeout.timestamp():
                                 # Task has not yet timed out
                                 # Continue and do nothing with the task
                                 continue

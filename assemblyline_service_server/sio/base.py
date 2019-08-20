@@ -36,8 +36,8 @@ def authenticated_only(f):
 class BaseNamespace(Namespace):
     def __init__(self, namespace=None):
         self.connections_lock = threading.RLock()
-        self.clients: Dict[str: ServiceClient] = {}
-        self.available_clients: Dict[str: List[str]] = {}
+        self.clients: Dict[str, ServiceClient] = {}
+        self.available_clients: Dict[str, List[str]] = {}
         self.banned_clients: List[str] = []
         super().__init__(namespace=namespace)
 
