@@ -1,7 +1,7 @@
 
-from al_service_server.api.base import make_api_response, make_subapi_blueprint
-from al_service_server.config import STORAGE
 from assemblyline.common import forge
+from assemblyline_service_server.api.base import make_api_response, make_subapi_blueprint
+from assemblyline_service_server.config import STORAGE
 
 SUB_API = 'help'
 constants = forge.get_constants()

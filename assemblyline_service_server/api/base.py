@@ -4,8 +4,8 @@ from traceback import format_tb
 
 from flask import current_app, Blueprint, jsonify, make_response, Response
 
-from al_service_server.config import BUILD_LOWER, BUILD_MASTER, BUILD_NO
 from assemblyline.common.str_utils import safe_str
+from assemblyline_service_server.config import BUILD_LOWER, BUILD_MASTER, BUILD_NO
 
 API_PREFIX = "/api"
 api = Blueprint("api", __name__, url_prefix=API_PREFIX)

@@ -8,7 +8,7 @@ services:
     volumes:
       - /opt/alv4/alv4_service_server/test/config/:/etc/assemblyline/
       - /opt/alv4/:/opt/alv4/
-    working_dir: /opt/alv4/alv4_service_server/al_service_server/
+    working_dir: /opt/alv4/alv4_service_server/assemblyline_service_server/
     command: python3 app.py
     depends_on:
       elasticsearch:

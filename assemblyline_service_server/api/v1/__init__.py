@@ -1,6 +1,6 @@
 from flask import current_app, Blueprint, request
 
-from al_service_server.api.base import make_api_response
+from assemblyline_service_server.api.base import make_api_response
 
 API_PREFIX = "/api/v1"
 apiv1 = Blueprint("apiv1", __name__, url_prefix=API_PREFIX)

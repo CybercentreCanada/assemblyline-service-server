@@ -9,9 +9,9 @@ import logging
 from flask import Flask
 from flask_socketio import SocketIO
 
-from al_service_server.sio.helper import HelperNamespace
-from al_service_server.sio.tasking import TaskingNamespace
 from assemblyline.common import forge, log as al_log
+from assemblyline_service_server.sio.helper import HelperNamespace
+from assemblyline_service_server.sio.tasking import TaskingNamespace
 
 config = forge.get_config()
 
