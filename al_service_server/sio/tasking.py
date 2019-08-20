@@ -7,8 +7,8 @@ import time
 
 from flask import request
 
-from al_core.dispatching.client import DispatchClient
-from al_core.dispatching.dispatcher import service_queue_name
+from assemblyline_core.dispatching.client import DispatchClient
+from assemblyline_core.dispatching.dispatcher import service_queue_name
 from al_service_server.sio.base import BaseNamespace, authenticated_only, LOGGER, get_request_id
 from assemblyline.common import forge
 from assemblyline.common.isotime import now_as_iso
