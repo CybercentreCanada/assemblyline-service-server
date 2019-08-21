@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional as Opt
 from assemblyline import odm
-from assemblyline_v4_service.common.task import Task
+from assemblyline.odm.messages.task import Task
 
 STATUSES = {'INITIALIZING', 'WAITING', 'PROCESSING', 'IDLE'}
 
