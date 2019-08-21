@@ -7,8 +7,8 @@ from flask import request
 from flask_socketio import Namespace, disconnect
 
 from assemblyline.common import forge
-from assemblyline.odm.models.service_client import ServiceClient
 from assemblyline_service_server.config import AUTH_KEY
+from assemblyline_service_server.session import ServiceClient
 
 config = forge.get_config()
 

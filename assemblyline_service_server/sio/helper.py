@@ -8,7 +8,7 @@ from assemblyline.common import identify
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.service import Service
-from assemblyline.odm.models.service_client import ServiceClient
+from assemblyline_service_server.session import ServiceClient
 from assemblyline_service_server.sio.base import BaseNamespace, authenticated_only, LOGGER
 
 filestore = forge.get_filestore()
