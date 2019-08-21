@@ -250,12 +250,15 @@ class TaskingNamespace(BaseNamespace):
                 # This is not the first time request_work has given us this task
                 if not first_issue:
                     # Pull out all the clients that ...
-                    peers = [client for client in self.clients.values()
+                    with self.connections_lock:
+                        peers = self.clients.values()
+                    peers = [client for client in peers
                              # ... are running the right service
                              if client.service_name == service_name and client.service_version == service_version
                              # ... and are working on the same sid/sha combo
-                             and client.current.status == 'PROCESSING' and task.sid != client.current.task.sid
-                             and task.fileinfo.sha256 == client.current.task.sha256
+                             and client.current.status == 'PROCESSING'
+                             and client.current.task.sid == task.sid
+                             and client.current.task.sha256 == task.fileinfo.sha256
                              # ... and haven't timed out yet
                              and now() < client.current.task_timeout.timestamp()]
 
