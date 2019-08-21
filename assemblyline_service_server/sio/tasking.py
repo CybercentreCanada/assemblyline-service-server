@@ -63,15 +63,39 @@ class TaskingNamespace(BaseNamespace):
         Otherwise they keep running in the background and the client is seen as still
         active by the rest of the system.
         """
-        client_info = {}
+        client_info = None
         with self.connections_lock:
             client_id = get_request_id(request)
             if client_id in self.clients:
                 client_info = self.clients[client_id]
+                current = client_info.current
+                if current.status == 'PROCESSING':
+                    # If the
+                    task = current.task
+
+                    error = Error(dict(
+                        created='NOW',
+                        expiry_ts=now_as_iso(task.ttl * 24 * 60 * 60),
+                        response=dict(
+                            message='',
+                            service_name=client_info.service_name,
+                            service_version=client_info.service_version or ' ',
+                            status='FAIL_RECOVERABLE',
+                        ),
+                        sha256=task.sha256,
+                        type="TASK PRE-EMPTED",
+                    ))
+
+                    service_tool_version_hash = ''
+                    task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
+                    conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
+                    error_key = error.build_key(conf_key)
+
+                    self.dispatch_client.service_failed(task.sid, error_key, error)
 
         with self._metrics_lock:
             self._metrics_times.pop(client_id, None)
-            if client_info.tasking_counters:
+            if client_info and client_info.tasking_counters:
                 client_info.tasking_counters[0].stop()
                 client_info.tasking_counters[1].stop()
 
@@ -140,6 +164,7 @@ class TaskingNamespace(BaseNamespace):
                 )
             return client_info.tasking_counters
 
+    # noinspection PyBroadException
     def _do_reports_between_events(self):
         """A daemon that continues to repeat the last status message for all clients.
 
@@ -152,7 +177,6 @@ class TaskingNamespace(BaseNamespace):
                 time.sleep(1)
                 with self.connections_lock:
                     client_info_list = list(self.clients.values())
-                    # LOGGER.debug(f"Doing background reporting round on {len(client_info_list)} clients")
                     for client_info in client_info_list:
                         if client_info.client_id in self.banned_clients:
                             self.report_active(client_info)
@@ -172,9 +196,9 @@ class TaskingNamespace(BaseNamespace):
     def _report_metrics(self, client_info: ServiceClient, timer_label):
         _, counter_timing = self._get_counters(client_info)
         with self._metrics_lock:
-            now = time.time()
-            delta = now - self._metrics_times.get(client_info.client_id, now)
-            self._metrics_times[client_info.client_id] = now
+            current_time = time.time()
+            delta = current_time - self._metrics_times.get(client_info.client_id, current_time)
+            self._metrics_times[client_info.client_id] = current_time
             counter_timing.increment_execution_time(timer_label, delta)
 
     # noinspection PyBroadException
@@ -225,15 +249,20 @@ class TaskingNamespace(BaseNamespace):
 
                 # This is not the first time request_work has given us this task
                 if not first_issue:
-                    # Check if this task is currently running in a client
-                    for client in self.clients.values():
-                        if client.current.status == 'PROCESSING' and task.sid == client.current.task_sid:
-                            # Task is currently being processed by a client
-                            # Check if this task has timed out
-                            if client.current.task_timeout and now() < client.current.task_timeout.timestamp():
-                                # Task has not yet timed out
-                                # Continue and do nothing with the task
-                                continue
+                    # Pull out all the clients that ...
+                    peers = [client for client in self.clients.values()
+                             # ... are running the right service
+                             if client.service_name == service_name and client.service_version == service_version
+                             # ... and are working on the same sid/sha combo
+                             and client.current.status == 'PROCESSING' and task.sid != client.current.task.sid
+                             and task.fileinfo.sha256 == client.current.task.sha256
+                             # ... and haven't timed out yet
+                             and now() < client.current.task_timeout.timestamp()]
+
+                    # If anyone meets all of those conditions, we can trust them to do this task,
+                    # and we can safely continue to skip to the next one in the queue
+                    if peers:
+                        continue
 
                 # No luck with the cache, lets dispatch the task to a client
                 counter.increment('cache_miss')
@@ -243,8 +272,7 @@ class TaskingNamespace(BaseNamespace):
                     clients = list(set(self.available_clients.get(service_name, [])).difference(set(self.banned_clients)))
                     if len(clients) == 0:
                         # We have no more client, put the task back and quit...
-                        if task:
-                            queue.unpop(task.as_primitives())
+                        queue.unpop(task.as_primitives())
                         break
 
                     client_id = random.choice(clients)
@@ -258,7 +286,7 @@ class TaskingNamespace(BaseNamespace):
                     service_timeout = self.clients[client_id].service_timeout
                     self.clients[client_id].current = Current(dict(
                         status='PROCESSING',
-                        task_sid=task.sid,
+                        task=task,
                         task_timeout=now_as_iso(service_timeout),
                     ))
 
@@ -324,6 +352,7 @@ class TaskingNamespace(BaseNamespace):
                 else:
                     counter.increment('fail_nonrecoverable')
 
+            self.clients[client_info.client_id].current.status = 'IDLE'
             self.report_active(client_info)
         except:
             LOGGER.exception(f"Error receiving result from: {service_name}")
@@ -349,6 +378,6 @@ class TaskingNamespace(BaseNamespace):
 
         self.clients[client_info.client_id].current = Current(dict(
             status='WAITING',
-            task_sid=None,
+            task=None,
             task_timeout=None,
         ))
