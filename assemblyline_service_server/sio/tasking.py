@@ -355,7 +355,11 @@ class TaskingNamespace(BaseNamespace):
                 else:
                     counter.increment('fail_nonrecoverable')
 
-            self.clients[client_info.client_id].current.status = 'IDLE'
+            self.clients[client_info.client_id].current = Current(dict(
+                status='IDLE',
+                task=None,
+                task_timeout=None,
+            ))
             self.report_active(client_info)
         except:
             LOGGER.exception(f"Error receiving result from: {service_name}")
