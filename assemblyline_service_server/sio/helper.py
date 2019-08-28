@@ -1,5 +1,4 @@
 import os
-import shutil
 import tempfile
 from typing import List
 
@@ -79,29 +78,53 @@ class HelperNamespace(BaseNamespace):
         self.socketio.start_background_task(target=self.send_file, sha256=sha256, file_path=file_path, client_info=client_info)
 
     @authenticated_only
-    def on_upload_file(self, data, classification, sha256: str, ttl: int, client_info: ServiceClient):
-        service_name = client_info.service_name
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
-                    f"Received file from client, SHA256: {sha256}")
+    def on_file_exists(self, sha256: str, file_path: str, classification: str, ttl: int, client_info: ServiceClient):
+        if not filestore.exists(sha256):
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
+                        f"New file from {client_info.service_name} service client doesn't exist, SHA256: {sha256}")
 
-        temp_dir = os.path.join(tempfile.gettempdir(), service_name)
+            # Create a temp folder to save uploaded file to
+            temp_upload_folder = os.path.join(tempfile.gettempdir(), 'uploads')
+            if not os.path.isdir(temp_upload_folder):
+                os.makedirs(temp_upload_folder)
+
+            # Create empty file to prepare for uploading the file in chunks
+            temp_file = os.path.join(temp_upload_folder, sha256)
+            with open(temp_file, 'wb'):
+                pass
+
+            return sha256, file_path, temp_file, classification, ttl
+
+        return None, None, None, None, None
+
+    @authenticated_only
+    def on_upload_file_chunk(self, file_path: str, offset: int, chunk, last_chunk: bool, classification: str,
+                             sha256: str, ttl: int, client_info: ServiceClient):
         try:
-            if not os.path.exists(temp_dir):
-                os.makedirs(temp_dir)
-            file_path = os.path.join(temp_dir, sha256)
-            with open(file_path, 'wb') as f:
-                f.write(data)
-                f.close()
+            with open(file_path, 'r+b') as f:
+                f.seek(offset)
+                f.write(chunk)
 
-            file_info = identify.fileinfo(file_path)
-            file_info['classification'] = classification
-            file_info['expiry_ts'] = now_as_iso(ttl * 24 * 60 * 60)
-            datastore.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'], file_info['classification'])
-            if not filestore.exists(file_info['sha256']):
-                filestore.upload(file_path, file_info['sha256'])
-        finally:
-            if temp_dir:
-                shutil.rmtree(temp_dir)
+            if last_chunk:
+                file_info = identify.fileinfo(file_path)
+                file_info['classification'] = classification
+                file_info['expiry_ts'] = now_as_iso(ttl * 24 * 60 * 60)
+                datastore.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'],
+                                               file_info['classification'])
+                if not filestore.exists(file_info['sha256']):
+                    filestore.upload(file_path, file_info['sha256'])
+
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+
+                self.socketio.emit('upload_success', True, namespace=self.namespace, room=client_info.client_id)
+                LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
+                            f"Successfully received file from {client_info.service_name} service client, SHA256: {sha256}")
+        except IOError as e:
+            LOGGER.error(f"An error occurred while downloading file to: {file_path}")
+            LOGGER.error(str(e))
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
 
     def send_file(self, sha256: str, file_path: str, client_info: ServiceClient):
         temp_file = tempfile.NamedTemporaryFile()
