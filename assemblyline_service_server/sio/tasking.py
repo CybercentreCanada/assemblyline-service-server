@@ -71,7 +71,7 @@ class TaskingNamespace(BaseNamespace):
                 current = client_info.current
                 if current.status == 'PROCESSING':
                     # If the
-                    task = current.task
+                    task: Task = current.task
 
                     error = Error(dict(
                         created='NOW',
@@ -82,7 +82,7 @@ class TaskingNamespace(BaseNamespace):
                             service_version=client_info.service_version or ' ',
                             status='FAIL_RECOVERABLE',
                         ),
-                        sha256=task.sha256,
+                        sha256=task.fileinfo.sha256,
                         type="TASK PRE-EMPTED",
                     ))
 
