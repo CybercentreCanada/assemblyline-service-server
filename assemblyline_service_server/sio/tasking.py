@@ -77,7 +77,7 @@ class TaskingNamespace(BaseNamespace):
                         created='NOW',
                         expiry_ts=now_as_iso(task.ttl * 24 * 60 * 60),
                         response=dict(
-                            message='',
+                            message='The service instance processing this task has terminated unexpectedly.',
                             service_name=client_info.service_name,
                             service_version=client_info.service_version or ' ',
                             status='FAIL_RECOVERABLE',
@@ -129,7 +129,7 @@ class TaskingNamespace(BaseNamespace):
                             created='NOW',
                             expiry_ts=now_as_iso(task.ttl * 24 * 60 * 60),
                             response=dict(
-                                message='',
+                                message='The service was disabled while processing this task.',
                                 service_name=task.service_name,
                                 service_version=service.version or ' ',
                                 status='FAIL_NONRECOVERABLE',
