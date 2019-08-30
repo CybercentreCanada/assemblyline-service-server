@@ -104,7 +104,7 @@ class HelperNamespace(BaseNamespace):
         return None, None, None, None, None
 
     @authenticated_only
-    def on_upload_file_chunk(self, file_path: str, offset: int, chunk, last_chunk: bool, classification: str,
+    def on_upload_file_chunk(self, file_path: str, offset: int, chunk: bytes, last_chunk: bool, classification: str,
                              sha256: str, ttl: int, client_info: ServiceClient):
         try:
             with open(file_path, 'r+b') as f:
