@@ -80,7 +80,6 @@ pipelines:
             - twine upload --skip-existing --repository-url $TEST_REPOSITORY_URL dist/*
       - step:
           name: Deploy to PyPI
-          trigger: manual
           deployment: pypi
           script:
             - pip install twine
@@ -88,7 +87,6 @@ pipelines:
             - twine upload --skip-existing dist/*
       - step:
           name: Deploy to Docker Hub
-          trigger: manual
           services: [docker]
           deployment: container
           script:
