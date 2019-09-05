@@ -2,18 +2,24 @@ import hashlib
 import json
 import logging
 import random
+import sys
 import threading
 import time
+import traceback
+from typing import Dict, cast
 
 from flask import request
 
 from assemblyline.common import forge
+from assemblyline.common.attack_map import attack_map
+from assemblyline.common.forge import CachedObject
 from assemblyline.common.isotime import now_as_iso, now
 from assemblyline.common.metrics import MetricsFactory
 from assemblyline.odm.messages.service_heartbeat import Metrics
 from assemblyline.odm.messages.service_timing_heartbeat import Metrics as TimingMetrics
 from assemblyline.odm.messages.task import Task
 from assemblyline.odm.models.error import Error
+from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.result import Result
 from assemblyline.remote.datatypes import get_client
 from assemblyline.remote.datatypes.queues.named import NamedQueue
@@ -50,6 +56,8 @@ class TaskingNamespace(BaseNamespace):
             port=config.core.redis.nonpersistent.port,
             private=False,
         )
+
+        self.heuristics = cast(Dict[str, Heuristic], CachedObject(self._get_heuristics, refresh=300))
 
         # A background thread that periodically checks the status of all the services
         # and cleans up any service task queues when a service is disabled/deleted
@@ -307,18 +315,40 @@ class TaskingNamespace(BaseNamespace):
 
     @authenticated_only
     def on_done_task(self, exec_time: int, task: dict, result: dict, client_info: ServiceClient):
-        service_name = 'unknown'
+        counter = None
         try:
             service_name = client_info.service_name
             counter, _ = self._get_counters(client_info)
             task = Task(task)
 
             if 'result' in result:  # Task completed successfully
-                LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
-                            f"Client successfully completed the {service_name} task in {exec_time}ms")
+                # Add scores to the heuristics, if any section set a heuristic
+                total_score = 0
+                for section in result['result']['sections']:
+                    if section.get('heuristic', None):
+                        heur_id = section['heuristic']['heur_id']
+                        attack_id = section['heuristic'].get('attack_id', None)
+
+                        if self.heuristics.get(heur_id):
+                            # Assign a score for the heuristic from the datastore
+                            section['heuristic']['score'] = self.heuristics[heur_id].score
+                            total_score += self.heuristics[heur_id].score
+
+                            if attack_id:
+                                # Verify that the attack_id is valid
+                                if attack_id not in attack_map:
+                                    LOGGER.warning(f"SocketIO:{self.namespace} - {service_name} service specified "
+                                                   f"an invalid attack_id in its service result, ignoring it")
+                                    # Assign an attack_id from the datastore if it exists
+                                    section['heuristic']['attack_id'] = self.heuristics[heur_id].attack_id or None
+                            else:
+                                # Assign an attack_id from the datastore if it exists
+                                section['heuristic']['attack_id'] = self.heuristics[heur_id].attack_id or None
+
+                # Update the total score of the result
+                result['result']['score'] = total_score
 
                 result = Result(result)
-
                 if result.response.service_tool_version is not None:
                     service_tool_version_hash = hashlib.md5((result.response.service_tool_version.encode('utf-8'))).hexdigest()
                 else:
@@ -333,6 +363,10 @@ class TaskingNamespace(BaseNamespace):
                     counter.increment('scored')
                 else:
                     counter.increment('not_scored')
+
+                LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
+                            f"Client successfully completed the {service_name} task in {exec_time}ms")
+
             else:  # Task failed
                 LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
                             f"Client failed to complete the {service_name} task in {exec_time}ms")
@@ -361,9 +395,34 @@ class TaskingNamespace(BaseNamespace):
                 task_timeout=None,
             ))
             self.report_active(client_info)
-        except:
-            LOGGER.exception(f"Error receiving result from: {service_name}")
-            raise
+        except Exception as e:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            msg = repr(traceback.format_exception(exc_type, exc_value, exc_traceback))
+
+            error = Error(dict(
+                created='NOW',
+                expiry_ts=now_as_iso(task.ttl * 24 * 60 * 60),
+                response=dict(
+                    message=f"The service sent an invalid result: {str(msg)}",
+                    service_name=client_info.service_name,
+                    service_version=client_info.service_version or ' ',
+                    status='FAIL_NONRECOVERABLE',
+                ),
+                sha256=task.fileinfo.sha256,
+                type="EXCEPTION",
+            ))
+
+            service_tool_version_hash = ''
+            task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
+            conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
+            error_key = error.build_key(conf_key)
+            self.dispatch_client.service_failed(task.sid, error_key, error)
+
+            if counter:
+                counter.increment('fail_nonrecoverable')
+
+    def _get_heuristics(self):
+        return {h.heur_id: h for h in datastore.list_all_heuristics()}
 
     @authenticated_only
     def on_got_task(self, idle_time, client_info: ServiceClient):

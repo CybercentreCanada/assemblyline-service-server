@@ -60,13 +60,19 @@ class HelperNamespace(BaseNamespace):
         new_heuristic = False
 
         for heuristic in heuristics:
-            heuristic = Heuristic(heuristic)
-            if not datastore.heuristic.get_if_exists(heuristic.heur_id):
-                datastore.heuristic.save(heuristic.heur_id, heuristic)
-                datastore.heuristic.commit()
-                LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
-                            f"New {client_info.service_name} service Heuristic saved: {heuristic.heur_id}")
-                new_heuristic = True
+            try:
+                heuristic = Heuristic(heuristic)
+                if not datastore.heuristic.get_if_exists(heuristic.heur_id):
+                    datastore.heuristic.save(heuristic.heur_id, heuristic)
+                    datastore.heuristic.commit()
+                    LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
+                                f"New {client_info.service_name} service Heuristic saved: {heuristic.heur_id}")
+                    new_heuristic = True
+            except Exception as e:
+                LOGGER.error(f"SocketIO:{self.namespace} - {client_info.client_id} - "
+                             f"{client_info.service_name} service tried to register an invalid Heuristic "
+                             f"({heuristic.heur_id}): {str(e)}")
+                return False
 
         return new_heuristic
 
