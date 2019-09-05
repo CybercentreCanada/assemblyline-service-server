@@ -38,13 +38,6 @@ class HelperNamespace(BaseNamespace):
         keep_alive = True
         service = Service(service_data)
 
-        if not datastore.service_delta.get_if_exists(service.name):
-            # Save service delta
-            datastore.service_delta.save(service.name, {'version': service.version})
-            datastore.service_delta.commit()
-            LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
-                        f"New service registered: {service.name}_{service.version}")
-
         if not datastore.service.get_if_exists(f'{service.name}_{service.version}'):
             # Save service
             datastore.service.save(f'{service.name}_{service.version}', service)
@@ -52,6 +45,13 @@ class HelperNamespace(BaseNamespace):
             LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
                         f"New service version registered: {service.name}_{service.version}")
             keep_alive = False
+
+        if not datastore.service_delta.get_if_exists(service.name):
+            # Save service delta
+            datastore.service_delta.save(service.name, {'version': service.version})
+            datastore.service_delta.commit()
+            LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
+                        f"New service registered: {service.name}_{service.version}")
 
         return keep_alive
 
