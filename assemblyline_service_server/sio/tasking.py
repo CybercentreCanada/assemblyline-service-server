@@ -266,7 +266,7 @@ class TaskingNamespace(BaseNamespace):
                              # ... and are working on the same sid/sha combo
                              and client.current.status == 'PROCESSING'
                              and client.current.task.sid == task.sid
-                             and client.current.task.sha256 == task.fileinfo.sha256
+                             and client.current.task.fileinfo.sha256 == task.fileinfo.sha256
                              # ... and haven't timed out yet
                              and now() < client.current.task_timeout.timestamp()]
 
