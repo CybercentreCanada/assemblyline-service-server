@@ -62,7 +62,9 @@ def test_register_service(sio, datastore):
         sio.emit('register_service', service_data, namespace='/helper', callback=callback_register_service_new)
         sio.emit('register_service', service_data, namespace='/helper', callback=callback_register_service_existing)
         # Returns boolean based on whether the corresponding 'set' has been called before the end of the timeout
-        # Effectively this is 'assert the callback has been called within 5 seconds'
+        # Effectively this is 'assert the callback has been called within 5 seconds'. Even though we call the asserts
+        # in this order, we don't actually know a priori which order they are run in, but we should be testing that
+        # based on the value of the keep_alive argument.
         assert new_call.wait(5)
         assert existing_call.wait(5)
     finally:
