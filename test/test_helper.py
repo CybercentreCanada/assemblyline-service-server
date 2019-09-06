@@ -1,7 +1,7 @@
-import random
-
+import threading
 import pytest
 import socketio
+import random
 
 from assemblyline.common import forge
 from assemblyline.common.classification import Classification
@@ -44,26 +44,42 @@ def sio():
 
 
 def test_register_service(sio, datastore):
+    # Without events to wait on, due to the async nature of socketio, we will
+    # disconnect before the callbacks ever run, this event lets us assert that it is actually called
+    new_call = threading.Event()
+    existing_call = threading.Event()
+
     def callback_register_service_new(keep_alive):
-        assert keep_alive is False
+        assert not keep_alive
+        new_call.set()
 
     def callback_register_service_existing(keep_alive):
-        assert keep_alive is True
+        assert keep_alive
+        existing_call.set()
 
     try:
         service_data = random_model_obj(Service, as_json=True)
         sio.emit('register_service', service_data, namespace='/helper', callback=callback_register_service_new)
         sio.emit('register_service', service_data, namespace='/helper', callback=callback_register_service_existing)
+        # Returns boolean based on whether the corresponding 'set' has been called before the end of the timeout
+        # Effectively this is 'assert the callback has been called within 5 seconds'
+        assert new_call.wait(5)
+        assert existing_call.wait(5)
     finally:
         sio.disconnect()
 
 
 def test_get_classification_definition(sio, datastore):
+
+    definition_called = threading.Event()
+
     def callback_get_classification_definition(classification_definition):
         assert Classification(classification_definition)
+        definition_called.set()
 
     try:
         sio.emit('get_classification_definition', namespace='/helper', callback=callback_get_classification_definition)
+        assert definition_called.wait(5)
     finally:
         sio.disconnect()
 
@@ -79,16 +95,23 @@ def test_get_classification_definition(sio, datastore):
 
 
 def test_save_heuristics(sio, datastore):
+    new_call = threading.Event()
+    existing_call = threading.Event()
+
     def callback_save_heuristics_new(new):
-        assert new is True
+        assert new
+        new_call.set()
 
     def callback_save_heuristics_existing(new):
-        assert new is False
+        assert not new
+        existing_call.set()
 
     try:
         heuristics = [randomizer.random_model_obj(Heuristic, as_json=True) for _ in range(random.randint(1, 6))]
         sio.emit('save_heuristics', heuristics, namespace='/helper', callback=callback_save_heuristics_new)
         sio.emit('save_heuristics', heuristics, namespace='/helper', callback=callback_save_heuristics_existing)
+        assert new_call.wait(5)
+        assert existing_call.wait(5)
     finally:
         sio.disconnect()
 
