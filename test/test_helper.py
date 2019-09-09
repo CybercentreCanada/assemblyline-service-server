@@ -1,7 +1,8 @@
+import random
 import threading
+
 import pytest
 import socketio
-import random
 
 from assemblyline.common import forge
 from assemblyline.common.classification import Classification
@@ -54,18 +55,18 @@ def test_register_service(sio, datastore):
         new_call.set()
 
     def callback_register_service_existing(keep_alive):
-        assert keep_alive
+        assert keep_alive is True
         existing_call.set()
 
     try:
         service_data = random_model_obj(Service, as_json=True)
         sio.emit('register_service', service_data, namespace='/helper', callback=callback_register_service_new)
+        assert new_call.wait(5)
         sio.emit('register_service', service_data, namespace='/helper', callback=callback_register_service_existing)
         # Returns boolean based on whether the corresponding 'set' has been called before the end of the timeout
         # Effectively this is 'assert the callback has been called within 5 seconds'. Even though we call the asserts
         # in this order, we don't actually know a priori which order they are run in, but we should be testing that
         # based on the value of the keep_alive argument.
-        assert new_call.wait(5)
         assert existing_call.wait(5)
     finally:
         sio.disconnect()
@@ -111,8 +112,8 @@ def test_save_heuristics(sio, datastore):
     try:
         heuristics = [randomizer.random_model_obj(Heuristic, as_json=True) for _ in range(random.randint(1, 6))]
         sio.emit('save_heuristics', heuristics, namespace='/helper', callback=callback_save_heuristics_new)
-        sio.emit('save_heuristics', heuristics, namespace='/helper', callback=callback_save_heuristics_existing)
         assert new_call.wait(5)
+        sio.emit('save_heuristics', heuristics, namespace='/helper', callback=callback_save_heuristics_existing)
         assert existing_call.wait(5)
     finally:
         sio.disconnect()
