@@ -23,17 +23,6 @@ class HelperNamespace(BaseNamespace):
         return forge.get_classification().__dict__['original_definition']
 
     @authenticated_only
-    def on_get_system_constants(self, client_info: ServiceClient):
-        constants = forge.get_constants()
-        LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
-                    f"Sending system constants to {client_info.service_name} service client")
-
-        return {
-            'RECOGNIZED_TYPES': constants.RECOGNIZED_TYPES,
-            'RULE_PATH': constants.RULE_PATH,
-        }
-
-    @authenticated_only
     def on_register_service(self, service_data: dict, client_info: ServiceClient):
         keep_alive = True
         service = Service(service_data)
@@ -59,9 +48,11 @@ class HelperNamespace(BaseNamespace):
     def on_save_heuristics(self, heuristics: List[dict], client_info: ServiceClient):
         new_heuristic = False
 
-        for heuristic in heuristics:
+        for index, heuristic in enumerate(heuristics):
+            heuristic_id = f'#{index}'  # Assign a safe name for the heuristic in case parsing fails
             try:
                 heuristic = Heuristic(heuristic)
+                heuristic_id = heuristic.heur_id
                 if not datastore.heuristic.get_if_exists(heuristic.heur_id):
                     datastore.heuristic.save(heuristic.heur_id, heuristic)
                     datastore.heuristic.commit()
@@ -71,7 +62,7 @@ class HelperNamespace(BaseNamespace):
             except Exception as e:
                 LOGGER.error(f"SocketIO:{self.namespace} - {client_info.client_id} - "
                              f"{client_info.service_name} service tried to register an invalid Heuristic "
-                             f"({heuristic.heur_id}): {str(e)}")
+                             f"({heuristic_id}): {str(e)}")
                 return False
 
         return new_heuristic
