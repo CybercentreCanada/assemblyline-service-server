@@ -1,10 +1,9 @@
+from assemblyline_service_server import app
+
 import time
 import os
 import os.path
 import hashlib
-
-from assemblyline_service_server import app
-
 import threading
 import pytest
 import socketio
@@ -62,7 +61,9 @@ def helper():
         'Service-Timeout': str(300),
         'X-Forwarded-For': '127.0.0.1',
     }
-    return flask_socketio.SocketIOTestClient(app.app, app.socketio, namespace='/helper', headers=headers)
+    client = flask_socketio.SocketIOTestClient(app.app, app.socketio, namespace='/helper', headers=headers)
+    yield client
+    client.disconnect('/helper')
 
 
 def test_register_service(sio, datastore):
@@ -216,7 +217,8 @@ def test_upload_file_inproc(helper):
     sha = hashlib.sha256(expected_body).hexdigest()
     fs.delete(sha)
     try:
-        _, _, dest_path, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1, callback=True, namespace='/helper')
+        _, _, dest_path, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1,
+                                            callback=True, namespace='/helper')
         helper.emit('upload_file_chunk', dest_path, 0, b'xxxxx', False, 'U', sha, 1, namespace='/helper')
         helper.emit('upload_file_chunk', dest_path, 5, b'yyyyy', True, 'U', sha, 1, namespace='/helper')
 
@@ -248,7 +250,8 @@ def test_upload_file_bad_hash_inproc(helper):
     sha = real_sha[:-4] + '0000'
     fs.delete(sha)
     try:
-        _, _, dest_path, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1, callback=True, namespace='/helper')
+        _, _, dest_path, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1,
+                                            callback=True, namespace='/helper')
         helper.emit('upload_file_chunk', dest_path, 0, b'xxxxx', False, 'U', sha, 1, namespace='/helper')
         helper.emit('upload_file_chunk', dest_path, 5, b'yyyyy', True, 'U', sha, 1, namespace='/helper')
 

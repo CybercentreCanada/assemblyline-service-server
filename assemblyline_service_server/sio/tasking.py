@@ -34,15 +34,18 @@ filestore = forge.get_filestore()
 
 
 class TaskingNamespace(BaseNamespace):
-    def __init__(self, namespace=None):
+    def __init__(self, namespace=None, redis=None):
         self.watch_threads = set()
-        self.dispatch_client = DispatchClient(datastore)
+        self.dispatch_client = DispatchClient(datastore, redis)
         super().__init__(namespace=namespace)
 
         # A lock to prevent the background metrics thread from clashing with the foreground
         # especially when writing values in client_info
         self._metrics_lock = threading.Lock()
         self._metrics_times = {}
+        # At the moment this is just always left as true for production, but during testing
+        # it is used to stop the background threads after each testing iteration.
+        self.running = True
 
         # A background thread that continues to push metrics about client busy/idle status
         # while the foreground thread is blocking on client events
@@ -50,7 +53,7 @@ class TaskingNamespace(BaseNamespace):
         metrics_thread.daemon = True
         metrics_thread.start()
 
-        self._redis = get_client(
+        self._redis = redis or get_client(
             db=config.core.redis.nonpersistent.db,
             host=config.core.redis.nonpersistent.host,
             port=config.core.redis.nonpersistent.port,
@@ -77,7 +80,7 @@ class TaskingNamespace(BaseNamespace):
             if client_id in self.clients:
                 client_info = self.clients[client_id]
                 current = client_info.current
-                if current.status == 'PROCESSING':
+                if current and current.status == 'PROCESSING':
                     # If the
                     task: Task = current.task
 
@@ -130,9 +133,10 @@ class TaskingNamespace(BaseNamespace):
 
             for service_name, service in service_queues.items():
                 if not service or not service.enabled:
-                    queue = NamedQueue(service_name, private=True)
-                    while queue.length() != 0:
+                    while True:
                         task, _ = self.dispatch_client.request_work(service.name, blocking=False)
+                        if task is None:
+                            break                        
                         error = Error(dict(
                             created='NOW',
                             expiry_ts=now_as_iso(task.ttl * 24 * 60 * 60),
@@ -226,7 +230,7 @@ class TaskingNamespace(BaseNamespace):
         counter, _ = self._get_counters(client_info)
 
         try:
-            while True:
+            while self.running:
                 # Request a service task
                 task, first_issue = self.dispatch_client.request_work(service_name, timeout=1)
 

@@ -87,7 +87,7 @@ class BaseNamespace(Namespace):
 def get_request_id(request_p):
     if hasattr(request_p, 'sid'):
         return request_p.sid
-    return None
+    return None  # TODO should this branch be here?
 
 
 def get_client_info(request_p) -> ServiceClient:
