@@ -1,4 +1,5 @@
 import logging
+import os
 
 from assemblyline.common import forge
 from assemblyline.common import log as al_log
@@ -15,7 +16,7 @@ DEBUG = config.ui.debug
 BUILD_MASTER = version.FRAMEWORK_VERSION
 BUILD_LOWER = version.SYSTEM_VERSION
 BUILD_NO = version.BUILD_MINOR
-AUTH_KEY = 'ThisIsARandomAuthKey...ChangeMe!'
+AUTH_KEY = os.environ.get('SERVICE_API_AUTH_KEY', 'ThisIsARandomAuthKey...ChangeMe!')
 
 RATE_LIMITER = Counters(prefix="quota",
                         host=config.core.redis.nonpersistent.host,
