@@ -184,11 +184,10 @@ def test_file_exists_inproc(helper):
     fs = forge.get_filestore()
     fs.put('test_file', 'x'*10)
     try:
-        sha, file_path, temp_path, classification, ttl = \
+        sha, file_path, classification, ttl = \
             helper.emit('file_exists', 'test_file', 'file_path', 'classification', 1, callback=True, namespace='/helper')
         assert sha is None
         assert file_path is None
-        assert temp_path is None
         assert classification is None
         assert ttl is None
     finally:
@@ -198,18 +197,21 @@ def test_file_exists_inproc(helper):
 def test_file_not_exists_inproc(helper):
     fs = forge.get_filestore()
     fs.delete('test_file')
-    temp_path = None
+    dest_path = None
     try:
-        sha, file_path, temp_path, classification, ttl = \
+        sha, file_path, classification, ttl = \
             helper.emit('file_exists', 'test_file', 'file_path', 'classification', 1, callback=True, namespace='/helper')
-        assert os.path.exists(temp_path)
         assert sha == 'test_file'
         assert file_path == 'file_path'
         assert classification == 'classification'
         assert ttl == 1
+
+        dest_path = os.path.join(tempfile.gettempdir(), 'uploads', sha)
+        assert not os.path.exists(dest_path)
     finally:
-        if temp_path:
-            os.unlink(temp_path)
+        fs.delete('test_file')
+        if os.path.exists(dest_path):
+            os.unlink(dest_path)
 
 
 def test_upload_file_inproc(helper):
@@ -220,8 +222,8 @@ def test_upload_file_inproc(helper):
     fs.delete(sha)
     try:
         _, _, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1, callback=True, namespace='/helper')
-        helper.emit('upload_file_chunk', dest_path, 0, b'xxxxx', False, 'U', sha, 1, namespace='/helper')
-        helper.emit('upload_file_chunk', dest_path, 5, b'yyyyy', True, 'U', sha, 1, namespace='/helper')
+        helper.emit('upload_file_chunk', 0, b'xxxxx', False, 'U', sha, 1, namespace='/helper')
+        helper.emit('upload_file_chunk', 5, b'yyyyy', True, 'U', sha, 1, namespace='/helper')
 
         assert fs.exists(sha)
         assert fs.get(sha) == expected_body
