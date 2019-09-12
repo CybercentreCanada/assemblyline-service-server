@@ -1,3 +1,5 @@
+import tempfile
+
 from assemblyline_service_server import app
 
 import time
@@ -211,25 +213,26 @@ def test_file_not_exists_inproc(helper):
 
 
 def test_upload_file_inproc(helper):
-    dest_path = ''
+    dest_path = None
     expected_body = b'xxxxxyyyyy'
     fs = forge.get_filestore()
     sha = hashlib.sha256(expected_body).hexdigest()
     fs.delete(sha)
     try:
-        _, _, dest_path, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1,
+        _, _, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1,
                                             callback=True, namespace='/helper')
         helper.emit('upload_file_chunk', dest_path, 0, b'xxxxx', False, 'U', sha, 1, namespace='/helper')
         helper.emit('upload_file_chunk', dest_path, 5, b'yyyyy', True, 'U', sha, 1, namespace='/helper')
 
         assert fs.exists(sha)
-        assert not os.path.exists(dest_path)
         assert fs.get(sha) == expected_body
 
         message = helper.get_received('/helper')[0]
         assert message['name'] == 'upload_success'
         assert message['args'][0] is True
 
+        dest_path = os.path.join(tempfile.gettempdir(), 'uploads', sha)
+        assert not os.path.exists(dest_path)
     finally:
         fs.delete(sha)
         if os.path.exists(dest_path):
@@ -243,21 +246,25 @@ def test_upload_file_bad_hash_inproc(helper):
     The file shouldn't be accepted into the system with either hash.
     TODO should the client be told to retry upload?
     """
-    dest_path = ''
+    dest_path = None
     expected_body = b'xxxxxyyyyy'
     fs = forge.get_filestore()
     real_sha = hashlib.sha256(expected_body).hexdigest()
     sha = real_sha[:-4] + '0000'
     fs.delete(sha)
     try:
-        _, _, dest_path, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1,
+        _, _, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1,
                                             callback=True, namespace='/helper')
-        helper.emit('upload_file_chunk', dest_path, 0, b'xxxxx', False, 'U', sha, 1, namespace='/helper')
-        helper.emit('upload_file_chunk', dest_path, 5, b'yyyyy', True, 'U', sha, 1, namespace='/helper')
+        helper.emit('upload_file_chunk', 0, b'xxxxx', False, 'U', sha, 1, namespace='/helper')
+        helper.emit('upload_file_chunk', 5, b'yyyyy', True, 'U', sha, 1, namespace='/helper')
 
         assert not fs.exists(sha)
         assert not fs.exists(real_sha)
+
+        dest_path = os.path.join(tempfile.gettempdir(), 'uploads', sha)
+        assert not os.path.exists(dest_path)
     finally:
         fs.delete(sha)
-        if os.path.exists(dest_path):
+        fs.delete(real_sha)
+        if dest_path and os.path.exists(dest_path):
             os.unlink(dest_path)
