@@ -103,9 +103,10 @@ class HelperNamespace(BaseNamespace):
                 f.seek(offset)
                 f.write(chunk)
 
-            if not last_chunk:
-                self.socketio.emit('chunk_upload_success', True, namespace=self.namespace, room=client_info.client_id)
-            else:
+            # Let the client know that the chunk was written successfully
+            self.socketio.emit('chunk_upload_success', True, namespace=self.namespace, room=client_info.client_id)
+
+            if last_chunk:
                 file_info = identify.fileinfo(dest_path)
 
                 # Validate SHA256 of the received file
@@ -127,10 +128,12 @@ class HelperNamespace(BaseNamespace):
                 LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
                             f"Successfully received file from {client_info.service_name} service client, SHA256: {sha256}")
 
+                if os.path.isfile(dest_path):
+                    os.unlink(dest_path)
+
         except IOError as e:
             LOGGER.error(f"An error occurred while downloading file to: {dest_path}")
             LOGGER.error(str(e))
-        finally:
             if os.path.isfile(dest_path):
                 os.unlink(dest_path)
 
