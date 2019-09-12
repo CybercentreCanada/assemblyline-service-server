@@ -125,7 +125,7 @@ class TaskingNamespace(BaseNamespace):
 
         while True:
             # Reset the status of the service queues
-            service_queues = {service_name: False for service_name in service_queues}
+            service_queues = {service_name: None for service_name in service_queues}
 
             # Update the service queue status based on current list of services
             for service in datastore.list_all_services(full=True):
@@ -134,7 +134,7 @@ class TaskingNamespace(BaseNamespace):
             for service_name, service in service_queues.items():
                 if not service or not service.enabled:
                     while True:
-                        task, _ = self.dispatch_client.request_work(service.name, blocking=False)
+                        task, _ = self.dispatch_client.request_work(service_name, blocking=False)
                         if task is None:
                             break                        
                         error = Error(dict(
@@ -143,7 +143,7 @@ class TaskingNamespace(BaseNamespace):
                             response=dict(
                                 message='The service was disabled while processing this task.',
                                 service_name=task.service_name,
-                                service_version=service.version or ' ',
+                                service_version=' ',
                                 status='FAIL_NONRECOVERABLE',
                             ),
                             sha256=task.fileinfo.sha256,
