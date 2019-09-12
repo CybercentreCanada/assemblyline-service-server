@@ -197,7 +197,7 @@ def test_file_exists_inproc(helper):
 def test_file_not_exists_inproc(helper):
     fs = forge.get_filestore()
     fs.delete('test_file')
-    dest_path = None
+    dest_path = ''
     try:
         sha, file_path, classification, ttl = \
             helper.emit('file_exists', 'test_file', 'file_path', 'classification', 1, callback=True, namespace='/helper')
@@ -215,7 +215,7 @@ def test_file_not_exists_inproc(helper):
 
 
 def test_upload_file_inproc(helper):
-    dest_path = None
+    dest_path = ''
     expected_body = b'xxxxxyyyyy'
     fs = forge.get_filestore()
     sha = hashlib.sha256(expected_body).hexdigest()
