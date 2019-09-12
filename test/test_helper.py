@@ -219,8 +219,7 @@ def test_upload_file_inproc(helper):
     sha = hashlib.sha256(expected_body).hexdigest()
     fs.delete(sha)
     try:
-        _, _, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1,
-                                            callback=True, namespace='/helper')
+        _, _, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1, callback=True, namespace='/helper')
         helper.emit('upload_file_chunk', dest_path, 0, b'xxxxx', False, 'U', sha, 1, namespace='/helper')
         helper.emit('upload_file_chunk', dest_path, 5, b'yyyyy', True, 'U', sha, 1, namespace='/helper')
 
