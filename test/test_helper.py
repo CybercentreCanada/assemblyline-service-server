@@ -216,14 +216,14 @@ def test_file_not_exists_inproc(helper):
 
 def test_upload_file_inproc(helper):
     dest_path = ''
-    expected_body = b'xxxxxyyyyy'
+    expected_body = b'iiiiijjjjj'
     fs = forge.get_filestore()
     sha = hashlib.sha256(expected_body).hexdigest()
     fs.delete(sha)
     try:
         _, _, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1, callback=True, namespace='/helper')
-        helper.emit('upload_file_chunk', 0, b'xxxxx', False, 'U', sha, 1, namespace='/helper')
-        helper.emit('upload_file_chunk', 5, b'yyyyy', True, 'U', sha, 1, namespace='/helper')
+        helper.emit('upload_file_chunk', 0, b'iiiii', False, 'U', sha, 1, namespace='/helper')
+        helper.emit('upload_file_chunk', 5, b'jjjjj', True, 'U', sha, 1, namespace='/helper')
 
         assert fs.exists(sha)
         assert fs.get(sha) == expected_body
