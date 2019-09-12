@@ -240,7 +240,6 @@ def test_upload_file_inproc(helper):
             os.unlink(dest_path)
 
 
-@pytest.mark.xfail  # This still fails. Remove this marking and change the test when function fixed
 def test_upload_file_bad_hash_inproc(helper):
     """Upload a file where the client provided hash is wrong.
 
@@ -248,7 +247,7 @@ def test_upload_file_bad_hash_inproc(helper):
     TODO should the client be told to retry upload?
     """
     dest_path = None
-    expected_body = b'xxxxxyyyyy'
+    expected_body = b'mmmmmnnnnn'
     fs = forge.get_filestore()
     real_sha = hashlib.sha256(expected_body).hexdigest()
     sha = real_sha[:-4] + '0000'
@@ -256,8 +255,8 @@ def test_upload_file_bad_hash_inproc(helper):
     try:
         _, _, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1,
                                             callback=True, namespace='/helper')
-        helper.emit('upload_file_chunk', 0, b'xxxxx', False, 'U', sha, 1, namespace='/helper')
-        helper.emit('upload_file_chunk', 5, b'yyyyy', True, 'U', sha, 1, namespace='/helper')
+        helper.emit('upload_file_chunk', 0, b'mmmmm', False, 'U', sha, 1, namespace='/helper')
+        helper.emit('upload_file_chunk', 5, b'nnnnn', True, 'U', sha, 1, namespace='/helper')
 
         assert not fs.exists(sha)
         assert not fs.exists(real_sha)
