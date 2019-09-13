@@ -1,39 +1,39 @@
-try:
-    from gevent.monkey import patch_all
-    patch_all()
-except ImportError:
-    patch_all = None
-
 import logging
 
 from flask import Flask
-from flask_socketio import SocketIO
+from flask.logging import default_handler
 
 from assemblyline.common import forge, log as al_log
-from assemblyline_service_server.sio.helper import HelperNamespace
-from assemblyline_service_server.sio.tasking import TaskingNamespace
+from assemblyline_service_server.api.v1.file import file_api
+from assemblyline_service_server.api.v1.service import service_api
+from assemblyline_service_server.api.v1.task import task_api
 
 config = forge.get_config()
 
 # Prepare the logger
 al_log.init_logging('svc')
-LOGGER = logging.getLogger('assemblyline.svc.socketio')
-LOGGER.info("SocketIO server ready to receive connections...")
+LOGGER = logging.getLogger('assemblyline.svc_server')
+LOGGER.info("Service server ready to receive connections...")
 
 # Prepare the app
-app = Flask('svc-socketio')
+app = Flask('svc-server')
 app.config['SECRET_KEY'] = config.ui.secret_key
-# NOTE: we need to run in threading mode while debugging otherwise, use gevent
-socketio = SocketIO(app, async_mode='gevent' if not config.ui.debug else 'threading')
 
-# Loading the different namespaces
-socketio.on_namespace(HelperNamespace('/helper'))
-socketio.on_namespace(TaskingNamespace('/tasking'))
+app.register_blueprint(file_api)
+app.register_blueprint(service_api)
+app.register_blueprint(task_api)
+
+# Setup logging
+app.logger.setLevel(LOGGER.getEffectiveLevel())
+app.logger.removeHandler(default_handler)
+for ph in LOGGER.parent.handlers:
+    app.logger.addHandler(ph)
 
 
 if __name__ == '__main__':
-    app.logger.setLevel(LOGGER.getEffectiveLevel())
     wlog = logging.getLogger('werkzeug')
     wlog.setLevel(LOGGER.getEffectiveLevel())
-    # Run debug mode
-    socketio.run(app, host='0.0.0.0', port=5003, debug=config.logging.log_level == 'DEBUG')
+    for h in LOGGER.parent.handlers:
+        wlog.addHandler(h)
+
+    app.run(host='0.0.0.0', port=5003, debug=config.logging.log_level == 'DEBUG')

@@ -5,7 +5,8 @@ from flask import request
 
 from assemblyline.common import forge, identify
 from assemblyline.common.isotime import now_as_iso
-from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, stream_file_response
+from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, stream_file_response, \
+    api_login
 from assemblyline_service_server.config import LOGGER, STORAGE
 
 SUB_API = 'file'
@@ -13,7 +14,8 @@ file_api = make_subapi_blueprint(SUB_API, api_version=1)
 file_api._doc = "Perform operations on file"
 
 
-@file_api.route("/download/<sha256>/", methods=["GET"])
+@file_api.route("/<sha256>/", methods=["GET"])
+@api_login()
 def download_file(sha256):
     """
     Download a file.
@@ -28,7 +30,7 @@ def download_file(sha256):
     None
 
     API call example:
-    /api/v1/file/download/123456...654321/
+    GET /api/v1/file/123456...654321/
 
     Result example:
     <THE FILE BINARY>
@@ -48,7 +50,8 @@ def download_file(sha256):
         return stream_file_response(open(temp_file, 'rb'), sha256, f_size)
 
 
-@file_api.route("/upload/", methods=["GET"])
+@file_api.route("/", methods=["PUT"])
+@api_login()
 def upload_files():
     """
     Upload multiple files.
@@ -69,7 +72,7 @@ def upload_files():
     }
 
     API call example:
-    /api/v1/file/upload/
+    PUT /api/v1/file/
 
     Result example:
     {"success": true}

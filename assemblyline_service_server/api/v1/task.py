@@ -10,11 +10,11 @@ from assemblyline.odm.messages.task import Task as ServiceTask
 from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.result import Result
 from assemblyline_core.dispatching.client import DispatchClient
-from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response
+from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
 from assemblyline_service_server.config import LOGGER, STORAGE
 from assemblyline_service_server.helper.heuristics import get_heuristics
 
-DISPATCH_CLIENT = DispatchClient()
+DISPATCH_CLIENT = DispatchClient(STORAGE)
 HEURISTICS = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
 
 SUB_API = 'task'
@@ -22,14 +22,16 @@ task_api = make_subapi_blueprint(SUB_API, api_version=1)
 task_api._doc = "Perform operations on service tasks"
 
 
-@task_api.route("/get/", methods=["GET"])
+@task_api.route("/", methods=["GET"])
+@api_login()
 def get_task():
     """
 
-    Data Block:
-    {'service_name': 'Extract',
+    Header:
+    {'container_id': abcd...123
+     'service_name': 'Extract',
      'service_version': '4.0.1',
-     'timeout': 30
+     'timeout': '30'
 
     }
 
@@ -39,7 +41,7 @@ def get_task():
     """
     data = request.json
     service_name = data['service_name']
-    timeout = data.get('timeout', 30)
+    timeout = int(data.get('timeout', 30))
 
     task, first_issue = DISPATCH_CLIENT.request_work(service_name, timeout=timeout)
 
@@ -48,8 +50,10 @@ def get_task():
         return make_api_response(dict(success=False))
 
 
-@task_api.route("/success/", methods=["GET"])
-def task_success():
+
+@task_api.route("/", methods=["POST"])
+@api_login()
+def task_finished():
     """
 
     Data Block:

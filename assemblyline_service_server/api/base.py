@@ -1,10 +1,11 @@
+import functools
 from sys import exc_info
 from traceback import format_tb
 
-from flask import current_app, Blueprint, jsonify, make_response, Response
+from flask import current_app, Blueprint, jsonify, make_response, Response, request
 
 from assemblyline.common.str_utils import safe_str
-from assemblyline_service_server.config import BUILD_LOWER, BUILD_MASTER, BUILD_NO, LOGGER
+from assemblyline_service_server.config import BUILD_LOWER, BUILD_MASTER, BUILD_NO, LOGGER, AUTH_KEY
 from assemblyline_service_server.logger import log_with_traceback
 
 API_PREFIX = "/api"
@@ -18,6 +19,19 @@ def make_subapi_blueprint(name, api_version=1):
 
 ####################################
 # API Helper func and decorators
+class api_login:
+    def __call__(self, func):
+        @functools.wraps(func)
+        def base(*args, **kwargs):
+            apikey = request.environ.get('HTTP_X_APIKEY', None)
+            if AUTH_KEY != apikey:
+                return make_api_response("", "Unauthorized access denied", 401)
+
+            return func(*args, **kwargs)
+
+        return base
+
+
 def make_api_response(data, err="", status_code=200, cookies=None):
     if type(err) is Exception:
         trace = exc_info()[2]
