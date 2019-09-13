@@ -1,7 +1,6 @@
 from flask import current_app, Blueprint, request
 
 from assemblyline_service_server.api.base import make_api_response
-from assemblyline_service_server.config import config
 
 API_PREFIX = "/api/v1"
 apiv1 = Blueprint("apiv1", __name__, url_prefix=API_PREFIX)
@@ -11,8 +10,8 @@ apiv1._doc = "Version 1 Api Documentation"
 #####################################
 # API DOCUMENTATION
 # noinspection PyProtectedMember,PyBroadException
-@apiv1.route("/")
-def get_api_documentation(**kwargs):
+@apiv1.route("/", methods=["GET"])
+def get_api_documentation(**_):
     """
     Full API doc.
 
@@ -32,6 +31,7 @@ def get_api_documentation(**kwargs):
     [                            # LIST of:
      {'name': "Api Doc",                # Name of the api
       'path': "/api/path/<variable>/",  # API path
+      'ui_only': false,                 # Is UI only API
       'methods': ["GET", "POST"],       # Allowed HTTP methods
       'description': "API doc.",        # API documentation
       'id': "api_doc",                  # Unique ID for the API
@@ -79,10 +79,8 @@ def get_api_documentation(**kwargs):
                 "name": func_title,
                 "id": api_id,
                 "function": rule.endpoint,
-                "path": rule.rule,
-                "methods": methods,
-                "description": description,
+                "path": rule.rule, "ui_only": rule.rule.startswith("%sui/" % request.path),
+                "methods": methods, "description": description,
                 "complete": "[INCOMPLETE]" not in description
             })
-
     return make_api_response({"apis": api_list, "blueprints": api_blueprints})

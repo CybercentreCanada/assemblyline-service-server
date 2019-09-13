@@ -1,81 +1,106 @@
-import json
 import os
-import shutil
-import sys
 import tempfile
-import traceback
 
 from flask import request
-from requests_toolbelt import MultipartEncoder
-from werkzeug.datastructures import FileStorage
 
-from assemblyline.common import forge
-from assemblyline.common import identify
+from assemblyline.common import forge, identify
 from assemblyline.common.isotime import now_as_iso
-from assemblyline.odm.messages.task import Task
-from assemblyline.odm.models.result import Result
-from assemblyline_service_server.api.base import make_api_response, make_subapi_blueprint, stream_multipart_response
+from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, stream_file_response
+from assemblyline_service_server.config import LOGGER, STORAGE
 
 SUB_API = 'file'
-
-file_api = make_subapi_blueprint(SUB_API)
-file_api._doc = "File manager"
-
-config = forge.get_config()
-datastore = forge.get_datastore()
-filestore = forge.get_filestore()
+file_api = make_subapi_blueprint(SUB_API, api_version=1)
+file_api._doc = "Perform operations on file"
 
 
 @file_api.route("/download/<sha256>/", methods=["GET"])
-def download_file(sha256, **_):
-    file = filestore.get(sha256)
-    fields = {'file': (sha256, file, 'application/text')}
-    m = MultipartEncoder(fields=fields)
-    return stream_multipart_response(m)
+def download_file(sha256):
+    """
+    Download a file.
+
+    Variables:
+    sha256       => A resource locator for the file (sha256)
+
+    Arguments:
+    None
+
+    Data Block:
+    None
+
+    API call example:
+    /api/v1/file/download/123456...654321/
+
+    Result example:
+    <THE FILE BINARY>
+    """
+    file_obj = STORAGE.file.get(sha256, as_obj=False)
+
+    if not file_obj:
+        return make_api_response({}, "The file was not found in the system.", 404)
+
+    with forge.get_filestore() as f_transport, tempfile.TemporaryFile() as temp_file:
+        f_transport.download(sha256, temp_file.name)
+        f_size = os.path.getsize(temp_file)
+
+        if f_size == 0:  # TODO: is this the correct way to check if the filestore doesn't have the file?
+            return make_api_response({}, "The file was not found in the system.", 404)
+
+        return stream_file_response(open(temp_file, 'rb'), sha256, f_size)
 
 
-@file_api.route("/save/", methods=["GET"])
-def save_file(**_):
+@file_api.route("/upload/", methods=["GET"])
+def upload_files():
+    """
+    Upload multiple files.
 
-    temp_dir = None
-    try:
-        # Load the Task and Result
-        task = Task(json.loads(request.files['task_json'].read()))
-        result_json = json.loads(request.files['result_json'].read())
-        result = Result(result_json)
+    Variables:
+    None
 
-        expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
+    Arguments:
+    None
 
-        new_files = result.response.extracted + result.response.supplementary
-        if new_files:
-            # Create temp dir for downloading the files
-            temp_dir = os.path.join(tempfile.gettempdir(), 'al', task.sid, task.service_name)
-            if not os.path.exists(temp_dir):
-                os.makedirs(temp_dir)
+    Data Block:
+    {<file #1 sha256>: {'classification': 'U',
+                        'ttl': 15
+                       },
+     <file #2 sha256>: {'classification': 'U',
+                        'ttl': 15
+                       }
+    }
 
-            # Download the extracted and supplementary files to temp dir
-            for f in new_files:
-                path = os.path.join(temp_dir, f.sha256)
-                FileStorage(request.files[f.sha256]).save(path)
+    API call example:
+    /api/v1/file/upload/
 
-            for f in new_files:
-                file_path = os.path.join(temp_dir, f.sha256)
-                file_info = identify.fileinfo(file_path)
-                file_info['classification'] = result.classification
-                file_info['expiry_ts'] = expiry_ts
-                datastore.save_or_freshen_file(f.sha256, file_info, file_info['expiry_ts'], file_info['classification'])
+    Result example:
+    {"success": true}
+    """
+    data = request.json
 
-                if not filestore.exists(f.sha256):
-                    file = os.path.join(temp_dir, f.sha256)
-                    filestore.upload(file, f.sha256)
+    with forge.get_filestore() as f_transport:
+        for sha256, file_obj in request.files.items():
+            with tempfile.NamedTemporaryFile() as temp_file:
+                # Write the file contents to the temporary file
+                temp_file.write(file_obj.stream.read())
 
-        msg = 'success'
-    except Exception:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-        msg = repr(traceback.format_exception(exc_type, exc_value,
-                                              exc_traceback))
-    finally:
-        if temp_dir:
-            shutil.rmtree(temp_dir)
+                # Identify the file info of the uploaded file
+                file_info = identify.fileinfo(temp_file.name)
 
-    return make_api_response(msg)
+                # Validate SHA256 of the uploaded file
+                if sha256 != file_info['sha256']:
+                    LOGGER.info(f"SHA256 of received file from {'service_name'} service client doesn't match: "
+                                f"{sha256} != {file_info['sha256']}")
+                    # TODO: handle situation when sha256 doesn't match, let the client know of all the failed files,
+                    #       so that it can try again
+
+                file_info['classification'] = data[sha256]['classification']
+                file_info['expiry_ts'] = now_as_iso(data[sha256]['ttl'] * 24 * 60 * 60)
+
+                # Update the datastore with the uploaded file
+                STORAGE.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'],
+                                             file_info['classification'])
+
+                # Upload file to the filestore if it doesn't already exist
+                if not f_transport.exists(file_info['sha256']):
+                    f_transport.upload(temp_file.name, file_info['sha256'])
+
+    return make_api_response(dict(success=True))
