@@ -1,12 +1,13 @@
 import hashlib
 import json
-from typing import cast, Dict
+from typing import cast, Dict, Any, Optional
 
 from flask import request
 
 from assemblyline.common.attack_map import attack_map
 from assemblyline.common.forge import CachedObject
 from assemblyline.odm.messages.task import Task as ServiceTask
+from assemblyline.odm.models.error import Error
 from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.result import Result
 from assemblyline_core.dispatching.client import DispatchClient
@@ -31,6 +32,7 @@ def get_task():
     {'container_id': abcd...123
      'service_name': 'Extract',
      'service_version': '4.0.1',
+     'service_tool_version': '
      'timeout': '30'
 
     }
@@ -39,41 +41,81 @@ def get_task():
     {'keep_alive': true}
 
     """
-    data = request.json
-    service_name = data['service_name']
-    timeout = int(data.get('timeout', 30))
+    service_name = request.headers['service_name']
+    service_version = request.headers['service_version']
+    service_tool_version = request.headers.get('service_tool_version')
+    timeout = int(request.headers.get('timeout', 30))
 
     task, first_issue = DISPATCH_CLIENT.request_work(service_name, timeout=timeout)
 
     if not task:
         # No task found in service queue
-        return make_api_response(dict(success=False))
+        return make_api_response(dict(task=False))
 
+    conf_key = generate_conf_key(service_tool_version, task.service_config)
+    result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
+                                       service_name=service_name,
+                                       service_version=service_version,
+                                       conf_key=conf_key)
+
+    # If we are allowed, try to see if the result has been cached
+    if not task.ignore_cache:
+        result = STORAGE.result.get_if_exists(result_key)
+        if result:
+            DISPATCH_CLIENT.service_finished(task.sid, result_key, result)
+
+    return make_api_response(dict(task=task.as_primitives()))
 
 
 @task_api.route("/", methods=["POST"])
 @api_login()
 def task_finished():
     """
+    Header:
+    {'client_id': 'abcd...123',
+    }
+
 
     Data Block:
     {'exec_time': 300,
      'task': {},
-     'result': {}
-     '
-
+     'result': ''
     }
     """
+    client_id = request.headers.get('client_id')
+    service_name = request.headers['service_name']
     data = request.json
-    task = ServiceTask(data['task'])
-    result = data['result']
+    exec_time = data.get('exec_time', '???')
 
+    try:
+        task = ServiceTask(data['task'])
+
+        if 'result' in data:  # Task created a result
+            LOGGER.info(f"{client_id or ''} - "
+                        f"Client failed to complete the {service_name} task in {exec_time}ms")
+            result = data['result']
+            handle_task_result(client_id, exec_time, task, result)
+
+        elif 'error' in data:  # Task created an error
+            error = data['error']
+            handle_task_error(client_id, exec_time, task, error)
+            return make_api_response(dict(success=True))
+        else:
+            return make_api_response("", "No result or error provided by service.", 400)
+
+    except ValueError as e:  # Catch errors when building Task or Result model
+        return make_api_response("", str(e), 400)
+
+    return
+
+
+def handle_task_result(client_id: str, exec_time: int, task: ServiceTask, result: Dict[str, Any]):
     # Add scores to the heuristics, if any section set a heuristic
     total_score = 0
     for section in result['result']['sections']:
-        if section.get('heuristic', None):
+        if section.get('heuristic'):
             heur_id = section['heuristic']['heur_id']
-            attack_id = section['heuristic'].get('attack_id', None)
+            attack_id = section['heuristic'].get('attack_id')
 
             if HEURISTICS.get(heur_id):
                 # Assign a score for the heuristic from the datastore
@@ -83,7 +125,7 @@ def task_finished():
                 if attack_id:
                     # Verify that the attack_id is valid
                     if attack_id not in attack_map:
-                        LOGGER.warning(f"SocketIO:{self.namespace} - {service_name} service specified "
+                        LOGGER.warning(f"{task.service_name} service specified "
                                        f"an invalid attack_id in its service result, ignoring it")
                         # Assign an attack_id from the datastore if it exists
                         section['heuristic']['attack_id'] = HEURISTICS[heur_id].attack_id or None
@@ -95,11 +137,46 @@ def task_finished():
     result['result']['score'] = total_score
 
     result = Result(result)
-    if result.response.service_tool_version is not None:
-        service_tool_version_hash = hashlib.md5((result.response.service_tool_version.encode('utf-8'))).hexdigest()
-    else:
-        service_tool_version_hash = ''
-    task_config_hash = hashlib.md5((json.dumps(sorted(task.service_config)).encode('utf-8'))).hexdigest()
-    conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
+
+    conf_key = generate_conf_key(result.response.service_tool_version, task.service_config)
     result_key = result.build_key(conf_key)
     DISPATCH_CLIENT.service_finished(task.sid, result_key, result)
+
+    # Metrics
+    if result.result.score > 0:
+        # counter.increment('scored')
+        pass
+    else:
+        # counter.increment('not_scored')
+        pass
+
+    LOGGER.info(f"{client_id} - Client successfully completed the {task.service_name} task in {exec_time}ms")
+
+
+def handle_task_error(client_id: str, exec_time: int, task: ServiceTask, error: Dict[str, Any]) -> None:
+    LOGGER.info(f"{client_id} - Client failed to complete the {task.service_name} task in {exec_time}ms")
+
+    error = Error(error)
+
+    conf_key = generate_conf_key(error.response.service_tool_version, task.service_config)
+    error_key = error.build_key(conf_key)
+    DISPATCH_CLIENT.service_failed(task.sid, error_key, error)
+
+    # Metrics
+    if error.response.status == 'FAIL_RECOVERABLE':
+        # counter.increment('fail_recoverable')
+        pass
+    else:
+        # counter.increment('fail_nonrecoverable')
+        pass
+
+
+def generate_conf_key(service_tool_version: Optional[str], service_config: Dict[str, Any]):
+    if service_tool_version is not None:
+        service_tool_version_hash = hashlib.md5((service_tool_version.encode('utf-8'))).hexdigest()
+    else:
+        service_tool_version_hash = ''
+
+    task_config_hash = hashlib.md5((json.dumps(sorted(service_config)).encode('utf-8'))).hexdigest()
+    conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
+    return conf_key

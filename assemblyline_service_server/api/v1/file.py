@@ -71,6 +71,12 @@ def upload_files():
                        }
     }
 
+    Files:
+
+    4-tuple ('filename', fileobj, 'content_type', custom_headers),
+    where 'content-type' is a string defining the content type of the given file
+    and custom_headers a dict-like object containing additional headers to add for the file.
+
     API call example:
     PUT /api/v1/file/
 
@@ -79,6 +85,7 @@ def upload_files():
     """
     data = request.json
 
+    failed_files = []
     with forge.get_filestore() as f_transport:
         for sha256, file_obj in request.files.items():
             with tempfile.NamedTemporaryFile() as temp_file:
@@ -89,21 +96,27 @@ def upload_files():
                 file_info = identify.fileinfo(temp_file.name)
 
                 # Validate SHA256 of the uploaded file
-                if sha256 != file_info['sha256']:
+                if sha256 == file_info['sha256']:
+                    file_info['classification'] = data[sha256]['classification']
+                    file_info['expiry_ts'] = now_as_iso(data[sha256]['ttl'] * 24 * 60 * 60)
+
+                    # Update the datastore with the uploaded file
+                    STORAGE.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'],
+                                                 file_info['classification'])
+
+                    # Upload file to the filestore if it doesn't already exist
+                    if not f_transport.exists(file_info['sha256']):
+                        f_transport.upload(temp_file.name, file_info['sha256'])
+                else:
+                    failed_files.append(sha256)
                     LOGGER.info(f"SHA256 of received file from {'service_name'} service client doesn't match: "
                                 f"{sha256} != {file_info['sha256']}")
-                    # TODO: handle situation when sha256 doesn't match, let the client know of all the failed files,
-                    #       so that it can try again
 
-                file_info['classification'] = data[sha256]['classification']
-                file_info['expiry_ts'] = now_as_iso(data[sha256]['ttl'] * 24 * 60 * 60)
-
-                # Update the datastore with the uploaded file
-                STORAGE.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'],
-                                             file_info['classification'])
-
-                # Upload file to the filestore if it doesn't already exist
-                if not f_transport.exists(file_info['sha256']):
-                    f_transport.upload(temp_file.name, file_info['sha256'])
-
-    return make_api_response(dict(success=True))
+    if failed_files:
+        # Return a list of upload failed files
+        return make_api_response(dict(
+            success=False,
+            failed_files=failed_files,
+        ))
+    else:
+        return make_api_response(dict(success=True))

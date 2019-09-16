@@ -1,6 +1,7 @@
+import copy
+
 from flask import request
 
-from assemblyline.common import forge
 from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.service import Service
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
@@ -27,7 +28,7 @@ def register_service():
     data = request.json
 
     try:
-        service = data
+        service = copy.deepcopy(data)
         # Pop the data not part of service model
         for x in ['file_required', 'tool_version', 'heuristics']:
             service.pop(x, None)
