@@ -123,7 +123,7 @@ class TaskingNamespace(BaseNamespace):
         # Get an initial list of all the service queues
         service_queues = {queue.decode('utf-8').lstrip('service-queue-'): None for queue in self._redis.keys(service_queue_name('*'))}
 
-        while True:
+        while self.running:
             # Reset the status of the service queues
             service_queues = {service_name: None for service_name in service_queues}
 
@@ -183,7 +183,7 @@ class TaskingNamespace(BaseNamespace):
         This provides real time feedback for the metrics engine even when the task takes
         longer to execute than the metrics export interval.
         """
-        while True:
+        while self.running:
             try:
                 logging.getLogger('assemblyline.counters').setLevel(logging.INFO)
                 time.sleep(1)
