@@ -46,11 +46,16 @@ def get_task(client_info):
     {'keep_alive': true}
 
     """
+    service_name = request.headers['service_name']
+    service_version = request.headers['service_version']
+    container_id = request.headers['container_id']
+    service_tool_version = request.headers.get('service_tool_version')
     timeout = int(request.headers.get('timeout', 30))
 
     counter = MetricsFactory('service', Metrics, name=client_info['service_name'], config=config)
 
     task, first_issue = DISPATCH_CLIENT.request_work(client_info['service_name'], timeout=timeout)
+    task = DISPATCH_CLIENT.request_work(container_id, service_name, timeout=timeout)
 
     if not task:
         # No task found in service queue
