@@ -2,6 +2,7 @@ import hashlib
 import json
 from typing import cast, Dict, Any, Optional
 
+from assemblyline.common import forge
 from flask import request
 
 from assemblyline.common.attack_map import attack_map
@@ -91,10 +92,14 @@ def task_finished():
         task = ServiceTask(data['task'])
 
         if 'result' in data:  # Task created a result
-            LOGGER.info(f"{client_id or ''} - "
-                        f"Client failed to complete the {service_name} task in {exec_time}ms")
+            # LOGGER.info(f"{client_id or ''} - "
+            #             f"Client failed to complete the {service_name} task in {exec_time}ms")
             result = data['result']
-            handle_task_result(client_id, exec_time, task, result)
+            missing_files = handle_task_result(client_id, exec_time, task, result)
+            if missing_files:
+                return make_api_response(dict(success=False, missing_files=missing_files))
+
+            return make_api_response(dict(success=True))
 
         elif 'error' in data:  # Task created an error
             error = data['error']
@@ -105,8 +110,6 @@ def task_finished():
 
     except ValueError as e:  # Catch errors when building Task or Result model
         return make_api_response("", str(e), 400)
-
-    return
 
 
 def handle_task_result(client_id: str, exec_time: int, task: ServiceTask, result: Dict[str, Any]):
@@ -137,6 +140,14 @@ def handle_task_result(client_id: str, exec_time: int, task: ServiceTask, result
     result['result']['score'] = total_score
 
     result = Result(result)
+
+    with forge.get_filestore() as f_transport:
+        missing_files = []
+        for file in (result.response.extracted + result.response.supplementary):
+            if not f_transport.exists(file.sha256):
+                missing_files.append(file.sha256)
+        if missing_files:
+            return missing_files
 
     conf_key = generate_conf_key(result.response.service_tool_version, task.service_config)
     result_key = result.build_key(conf_key)

@@ -8,6 +8,7 @@ from assemblyline.common.isotime import now_as_iso
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, stream_file_response, \
     api_login
 from assemblyline_service_server.config import LOGGER, STORAGE
+from werkzeug.datastructures import FileStorage
 
 SUB_API = 'file'
 file_api = make_subapi_blueprint(SUB_API, api_version=1)
@@ -40,14 +41,14 @@ def download_file(sha256):
     if not file_obj:
         return make_api_response({}, "The file was not found in the system.", 404)
 
-    with forge.get_filestore() as f_transport, tempfile.TemporaryFile() as temp_file:
+    with forge.get_filestore() as f_transport, tempfile.NamedTemporaryFile() as temp_file:
         f_transport.download(sha256, temp_file.name)
-        f_size = os.path.getsize(temp_file)
+        f_size = os.path.getsize(temp_file.name)
 
         if f_size == 0:  # TODO: is this the correct way to check if the filestore doesn't have the file?
             return make_api_response({}, "The file was not found in the system.", 404)
 
-        return stream_file_response(open(temp_file, 'rb'), sha256, f_size)
+        return stream_file_response(open(temp_file.name, 'rb'), sha256, f_size)
 
 
 @file_api.route("/", methods=["PUT"])
@@ -83,40 +84,40 @@ def upload_files():
     Result example:
     {"success": true}
     """
-    data = request.json
+    sha256 = request.headers['sha256']
+    classification = request.headers['classification']
+    ttl = int(request.headers['ttl'])
 
-    failed_files = []
-    with forge.get_filestore() as f_transport:
-        for sha256, file_obj in request.files.items():
-            with tempfile.NamedTemporaryFile() as temp_file:
-                # Write the file contents to the temporary file
-                temp_file.write(file_obj.stream.read())
+    with forge.get_filestore() as f_transport, tempfile.NamedTemporaryFile(mode='bw') as temp_file:
+        file = request.files['file']
+        # FileStorage(request.files[sha256]).save(temp_file.name)
+        # chunk_size = 4096
+        # while True:
+        #     chunk = request.stream.read(chunk_size)
+        #     if len(chunk) == 0:
+        #         break
+        #     temp_file.write(chunk)
+        file.save(temp_file.name)
 
-                # Identify the file info of the uploaded file
-                file_info = identify.fileinfo(temp_file.name)
+        # Identify the file info of the uploaded file
+        file_info = identify.fileinfo(temp_file.name)
 
-                # Validate SHA256 of the uploaded file
-                if sha256 == file_info['sha256']:
-                    file_info['classification'] = data[sha256]['classification']
-                    file_info['expiry_ts'] = now_as_iso(data[sha256]['ttl'] * 24 * 60 * 60)
+        # Validate SHA256 of the uploaded file
+        if sha256 == file_info['sha256']:
+            file_info['classification'] = classification
+            file_info['expiry_ts'] = now_as_iso(ttl * 24 * 60 * 60)
 
-                    # Update the datastore with the uploaded file
-                    STORAGE.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'],
-                                                 file_info['classification'])
+            # Update the datastore with the uploaded file
+            STORAGE.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'],
+                                         file_info['classification'])
 
-                    # Upload file to the filestore if it doesn't already exist
-                    if not f_transport.exists(file_info['sha256']):
-                        f_transport.upload(temp_file.name, file_info['sha256'])
-                else:
-                    failed_files.append(sha256)
-                    LOGGER.info(f"SHA256 of received file from {'service_name'} service client doesn't match: "
-                                f"{sha256} != {file_info['sha256']}")
+            # Upload file to the filestore if it doesn't already exist
+            if not f_transport.exists(file_info['sha256']):
+                f_transport.upload(temp_file.name, file_info['sha256'])
+        else:
+            LOGGER.info(f"SHA256 of received file from {'service_name'} service client doesn't match: "
+                        f"{sha256} != {file_info['sha256']}")
 
-    if failed_files:
-        # Return a list of upload failed files
-        return make_api_response(dict(
-            success=False,
-            failed_files=failed_files,
-        ))
-    else:
-        return make_api_response(dict(success=True))
+    LOGGER.info(f"File successfully uploaded (SHA256: {sha256})")
+
+    return make_api_response(dict(success=True))
