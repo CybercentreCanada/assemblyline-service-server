@@ -111,25 +111,27 @@ class HelperNamespace(BaseNamespace):
 
                 # Validate SHA256 of the received file
                 if sha256 != file_info['sha256']:
-                    self.socketio.emit('upload_success', False, namespace=self.namespace, room=client_info.client_id)
+                    if os.path.isfile(dest_path):
+                        os.unlink(dest_path)
+                    # TODO: retry upload
+                    # self.socketio.emit('upload_success', sha256, file_path, result['classification'], task.ttl), namespace=self.namespace, room=client_info.client_id)
                     LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
                                 f"SHA256 of received file from {client_info.service_name} service client doesn't match: "
                                 f"{sha256} != {file_info['sha256']}")
-                    return
+                else:
+                    file_info['classification'] = classification
+                    file_info['expiry_ts'] = now_as_iso(ttl * 24 * 60 * 60)
+                    datastore.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'],
+                                                   file_info['classification'])
+                    if not filestore.exists(file_info['sha256']):
+                        filestore.upload(dest_path, file_info['sha256'])
 
-                file_info['classification'] = classification
-                file_info['expiry_ts'] = now_as_iso(ttl * 24 * 60 * 60)
-                datastore.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'],
-                                               file_info['classification'])
-                if not filestore.exists(file_info['sha256']):
-                    filestore.upload(dest_path, file_info['sha256'])
+                    self.socketio.emit('upload_success', True, namespace=self.namespace, room=client_info.client_id)
+                    LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
+                                f"Successfully received file from {client_info.service_name} service client, SHA256: {sha256}")
 
-                self.socketio.emit('upload_success', True, namespace=self.namespace, room=client_info.client_id)
-                LOGGER.info(f"SocketIO:{self.namespace} - {client_info.client_id} - "
-                            f"Successfully received file from {client_info.service_name} service client, SHA256: {sha256}")
-
-                if os.path.isfile(dest_path):
-                    os.unlink(dest_path)
+                    if os.path.isfile(dest_path):
+                        os.unlink(dest_path)
 
         except IOError as e:
             LOGGER.error(f"An error occurred while downloading file to: {dest_path}")
