@@ -50,13 +50,13 @@ def get_task(client_info):
     """
 
     service_name = client_info['service_name']
-    container_id = request.headers['container_id']
+    client_id = client_info['client_id']
     timeout = int(request.headers.get('timeout', 30))
-    status_table.set(container_id, (service_name, ServiceStatus.Idle), ttl=int(timeout * 1.5))
+    status_table.set(client_id, (service_name, ServiceStatus.Idle), ttl=int(timeout * 1.5))
 
     counter = MetricsFactory('service', Metrics, name=service_name, config=config)
 
-    task = DISPATCH_CLIENT.request_work(container_id, service_name, timeout=timeout)
+    task = DISPATCH_CLIENT.request_work(client_id, service_name, timeout=timeout)
 
     if not task:
         # No task found in service queue
@@ -81,7 +81,7 @@ def get_task(client_info):
         # No luck with the cache, lets dispatch the task to a client
         counter.increment('cache_miss')
 
-    status_table.set(container_id, (service_name, ServiceStatus.Running), ttl=int(service_data.timeout * 1.5))
+    status_table.set(client_id, (service_name, ServiceStatus.Running), ttl=int(service_data.timeout * 1.5))
     return make_api_response(dict(task=task.as_primitives()))
 
 
