@@ -4,6 +4,8 @@ from typing import cast, Dict, Any, Optional
 
 from flask import request
 
+from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
+from assemblyline.remote.datatypes.hash import ExpiringHash
 from assemblyline.common import forge
 from assemblyline.common.attack_map import attack_map
 from assemblyline.common.forge import CachedObject
@@ -19,7 +21,7 @@ from assemblyline_service_server.config import LOGGER, STORAGE
 from assemblyline_service_server.helper.heuristics import get_heuristics
 
 config = forge.get_config()
-
+status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=None)
 DISPATCH_CLIENT = DispatchClient(STORAGE)
 HEURISTICS = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
 
@@ -46,15 +48,14 @@ def get_task(client_info):
     {'keep_alive': true}
 
     """
-    service_name = request.headers['service_name']
-    service_version = request.headers['service_version']
+
+    service_name = client_info['service_name']
     container_id = request.headers['container_id']
-    service_tool_version = request.headers.get('service_tool_version')
     timeout = int(request.headers.get('timeout', 30))
+    status_table.set(container_id, (service_name, ServiceStatus.Idle), ttl=int(timeout * 1.5))
 
-    counter = MetricsFactory('service', Metrics, name=client_info['service_name'], config=config)
+    counter = MetricsFactory('service', Metrics, name=service_name, config=config)
 
-    task, first_issue = DISPATCH_CLIENT.request_work(client_info['service_name'], timeout=timeout)
     task = DISPATCH_CLIENT.request_work(container_id, service_name, timeout=timeout)
 
     if not task:
@@ -65,12 +66,13 @@ def get_task(client_info):
 
     conf_key = generate_conf_key(client_info['service_tool_version'], task.service_config)
     result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
-                                       service_name=client_info['service_name'],
+                                       service_name=service_name,
                                        service_version=client_info['service_version'],
                                        conf_key=conf_key)
+    service_data = DISPATCH_CLIENT.schedule_builder.services[service_name]
 
     # If we are allowed, try to see if the result has been cached
-    if not task.ignore_cache:
+    if not task.ignore_cache and not service_data.disable_cache:
         result = STORAGE.result.get_if_exists(result_key)
         if result:
             DISPATCH_CLIENT.service_finished(task.sid, result_key, result)
@@ -79,6 +81,7 @@ def get_task(client_info):
         # No luck with the cache, lets dispatch the task to a client
         counter.increment('cache_miss')
 
+    status_table.set(container_id, (service_name, ServiceStatus.Running), ttl=int(service_data.timeout * 1.5))
     return make_api_response(dict(task=task.as_primitives()))
 
 
