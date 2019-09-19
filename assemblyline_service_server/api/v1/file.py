@@ -17,7 +17,7 @@ file_api._doc = "Perform operations on file"
 
 @file_api.route("/<sha256>/", methods=["GET"])
 @api_login()
-def download_file(sha256):
+def download_file(sha256, client_info):
     """
     Download a file.
 
@@ -53,7 +53,7 @@ def download_file(sha256):
 
 @file_api.route("/", methods=["PUT"])
 @api_login()
-def upload_files():
+def upload_files(client_info):
     """
     Upload multiple files.
 
@@ -90,13 +90,6 @@ def upload_files():
 
     with forge.get_filestore() as f_transport, tempfile.NamedTemporaryFile(mode='bw') as temp_file:
         file = request.files['file']
-        # FileStorage(request.files[sha256]).save(temp_file.name)
-        # chunk_size = 4096
-        # while True:
-        #     chunk = request.stream.read(chunk_size)
-        #     if len(chunk) == 0:
-        #         break
-        #     temp_file.write(chunk)
         file.save(temp_file.name)
 
         # Identify the file info of the uploaded file
@@ -115,9 +108,10 @@ def upload_files():
             if not f_transport.exists(file_info['sha256']):
                 f_transport.upload(temp_file.name, file_info['sha256'])
         else:
-            LOGGER.info(f"SHA256 of received file from {'service_name'} service client doesn't match: "
-                        f"{sha256} != {file_info['sha256']}")
+            LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
+                        f"uploaded file (SHA256: {file_info['sha256']}) doesn't match expected file (SHA256: {sha256})")
 
-    LOGGER.info(f"File successfully uploaded (SHA256: {sha256})")
+    LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
+                f"successfully uploaded file (SHA256: {file_info['sha256']})")
 
     return make_api_response(dict(success=True))

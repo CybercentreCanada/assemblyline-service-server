@@ -14,7 +14,7 @@ service_api._doc = "Perform operations on service"
 
 @service_api.route("/register/", methods=["PUT"])
 @api_login()
-def register_service():
+def register_service(client_info):
     """
 
     Data Block:
@@ -40,14 +40,15 @@ def register_service():
         if not STORAGE.service.get_if_exists(f'{service.name}_{service.version}'):
             STORAGE.service.save(f'{service.name}_{service.version}', service)
             STORAGE.service.commit()
-            LOGGER.info(f"New service registered: {service.name}")
+            LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} registered")
             keep_alive = False
 
         # Save service delta if it doesn't already exist
         if not STORAGE.service_delta.get_if_exists(service.name):
             STORAGE.service_delta.save(service.name, {'version': service.version})
             STORAGE.service_delta.commit()
-            LOGGER.info(f"New {service.name} version registered: {service.version}")
+            LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
+                        f"version ({service.version}) registered")
 
         heuristics = data.get('heuristics', None)
         new_heuristics = []
@@ -64,9 +65,11 @@ def register_service():
                         STORAGE.heuristic.save(heuristic.heur_id, heuristic)
                         STORAGE.heuristic.commit()
                         new_heuristics.append(heuristic.heur_id)
-                        LOGGER.info(f"New {service.name} heuristic saved: {heuristic.heur_id}")
+                        LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
+                                    f"heuristic ({heuristic.heur_id}::{heuristic.name}) saved")
                 except Exception as e:
-                    LOGGER.warning(f"Ignoring invalid {service.name} heuristic ({heuristic_id}): {str(e)}")
+                    LOGGER.warning(f"{client_info['client_id']} - {client_info['service_name']} "
+                                   f"invalid heuristic ({heuristic.heur_id}) ignored: {str(e)}")
     except ValueError as e:  # Catch errors when building Service or Heuristic model(s)
         return make_api_response("", str(e), 400)
 

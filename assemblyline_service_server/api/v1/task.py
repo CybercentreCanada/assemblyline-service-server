@@ -2,11 +2,13 @@ import hashlib
 import json
 from typing import cast, Dict, Any, Optional
 
-from assemblyline.common import forge
 from flask import request
 
+from assemblyline.common import forge
 from assemblyline.common.attack_map import attack_map
 from assemblyline.common.forge import CachedObject
+from assemblyline.common.metrics import MetricsFactory
+from assemblyline.odm.messages.service_heartbeat import Metrics
 from assemblyline.odm.messages.task import Task as ServiceTask
 from assemblyline.odm.models.error import Error
 from assemblyline.odm.models.heuristic import Heuristic
@@ -15,6 +17,8 @@ from assemblyline_core.dispatching.client import DispatchClient
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
 from assemblyline_service_server.config import LOGGER, STORAGE
 from assemblyline_service_server.helper.heuristics import get_heuristics
+
+config = forge.get_config()
 
 DISPATCH_CLIENT = DispatchClient(STORAGE)
 HEURISTICS = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
@@ -26,7 +30,7 @@ task_api._doc = "Perform operations on service tasks"
 
 @task_api.route("/", methods=["GET"])
 @api_login()
-def get_task():
+def get_task(client_info):
     """
 
     Header:
@@ -42,21 +46,22 @@ def get_task():
     {'keep_alive': true}
 
     """
-    service_name = request.headers['service_name']
-    service_version = request.headers['service_version']
-    service_tool_version = request.headers.get('service_tool_version')
     timeout = int(request.headers.get('timeout', 30))
 
-    task, first_issue = DISPATCH_CLIENT.request_work(service_name, timeout=timeout)
+    counter = MetricsFactory('service', Metrics, name=client_info['service_name'], config=config)
+
+    task, first_issue = DISPATCH_CLIENT.request_work(client_info['service_name'], timeout=timeout)
 
     if not task:
         # No task found in service queue
         return make_api_response(dict(task=False))
 
-    conf_key = generate_conf_key(service_tool_version, task.service_config)
+    counter.increment('execute')
+
+    conf_key = generate_conf_key(client_info['service_tool_version'], task.service_config)
     result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
-                                       service_name=service_name,
-                                       service_version=service_version,
+                                       service_name=client_info['service_name'],
+                                       service_version=client_info['service_version'],
                                        conf_key=conf_key)
 
     # If we are allowed, try to see if the result has been cached
@@ -64,13 +69,17 @@ def get_task():
         result = STORAGE.result.get_if_exists(result_key)
         if result:
             DISPATCH_CLIENT.service_finished(task.sid, result_key, result)
+            return make_api_response(dict(task=False))
+
+        # No luck with the cache, lets dispatch the task to a client
+        counter.increment('cache_miss')
 
     return make_api_response(dict(task=task.as_primitives()))
 
 
 @task_api.route("/", methods=["POST"])
 @api_login()
-def task_finished():
+def task_finished(client_info):
     """
     Header:
     {'client_id': 'abcd...123',
@@ -83,19 +92,17 @@ def task_finished():
      'result': ''
     }
     """
-    client_id = request.headers.get('client_id')
-    service_name = request.headers['service_name']
     data = request.json
-    exec_time = data.get('exec_time', '???')
+    exec_time = data.get('exec_time')
+
+    counter = MetricsFactory('service', Metrics, name=client_info['service_name'], config=config)
 
     try:
         task = ServiceTask(data['task'])
 
         if 'result' in data:  # Task created a result
-            # LOGGER.info(f"{client_id or ''} - "
-            #             f"Client failed to complete the {service_name} task in {exec_time}ms")
             result = data['result']
-            missing_files = handle_task_result(client_id, exec_time, task, result)
+            missing_files = handle_task_result(exec_time, task, result, counter, client_info)
             if missing_files:
                 return make_api_response(dict(success=False, missing_files=missing_files))
 
@@ -103,7 +110,7 @@ def task_finished():
 
         elif 'error' in data:  # Task created an error
             error = data['error']
-            handle_task_error(client_id, exec_time, task, error)
+            handle_task_error(exec_time, task, error, counter, client_info)
             return make_api_response(dict(success=True))
         else:
             return make_api_response("", "No result or error provided by service.", 400)
@@ -112,7 +119,8 @@ def task_finished():
         return make_api_response("", str(e), 400)
 
 
-def handle_task_result(client_id: str, exec_time: int, task: ServiceTask, result: Dict[str, Any]):
+def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], counter: MetricsFactory,
+                       client_info: Dict[str, str]):
     # Add scores to the heuristics, if any section set a heuristic
     total_score = 0
     for section in result['result']['sections']:
@@ -128,8 +136,8 @@ def handle_task_result(client_id: str, exec_time: int, task: ServiceTask, result
                 if attack_id:
                     # Verify that the attack_id is valid
                     if attack_id not in attack_map:
-                        LOGGER.warning(f"{task.service_name} service specified "
-                                       f"an invalid attack_id in its service result, ignoring it")
+                        LOGGER.warning(f"{client_info['client_id']} - {client_info['service_name']} "
+                                       f"service specified an invalid attack_id in its service result, ignoring it")
                         # Assign an attack_id from the datastore if it exists
                         section['heuristic']['attack_id'] = HEURISTICS[heur_id].attack_id or None
                 else:
@@ -155,17 +163,18 @@ def handle_task_result(client_id: str, exec_time: int, task: ServiceTask, result
 
     # Metrics
     if result.result.score > 0:
-        # counter.increment('scored')
-        pass
+        counter.increment('scored')
     else:
-        # counter.increment('not_scored')
-        pass
+        counter.increment('not_scored')
 
-    LOGGER.info(f"{client_id} - Client successfully completed the {task.service_name} task in {exec_time}ms")
+    LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
+                f"successfully completed task (SID: {task.sid}){f' in {exec_time}ms' if exec_time else ''}")
 
 
-def handle_task_error(client_id: str, exec_time: int, task: ServiceTask, error: Dict[str, Any]) -> None:
-    LOGGER.info(f"{client_id} - Client failed to complete the {task.service_name} task in {exec_time}ms")
+def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], counter: MetricsFactory,
+                      client_info: Dict[str, str]) -> None:
+    LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
+                f"failed to complete task (SID: {task.sid}){f' in {exec_time}ms' if exec_time else ''}")
 
     error = Error(error)
 
@@ -175,11 +184,9 @@ def handle_task_error(client_id: str, exec_time: int, task: ServiceTask, error: 
 
     # Metrics
     if error.response.status == 'FAIL_RECOVERABLE':
-        # counter.increment('fail_recoverable')
-        pass
+        counter.increment('fail_recoverable')
     else:
-        # counter.increment('fail_nonrecoverable')
-        pass
+        counter.increment('fail_nonrecoverable')
 
 
 def generate_conf_key(service_tool_version: Optional[str], service_config: Dict[str, Any]):

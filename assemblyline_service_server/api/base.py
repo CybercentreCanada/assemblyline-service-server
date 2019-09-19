@@ -27,6 +27,14 @@ class api_login:
             if AUTH_KEY != apikey:
                 return make_api_response("", "Unauthorized access denied", 401)
 
+            client_info = dict(
+                client_id=request.headers['container_id'],
+                service_name=request.headers['service_name'],
+                service_version=request.headers['service_version'],
+                service_tool_version=request.headers.get('service_tool_version'),
+            )
+
+            kwargs['client_info'] = client_info
             return func(*args, **kwargs)
 
         return base
