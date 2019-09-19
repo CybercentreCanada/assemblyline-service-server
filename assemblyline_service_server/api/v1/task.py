@@ -22,8 +22,8 @@ from assemblyline_service_server.helper.heuristics import get_heuristics
 
 config = forge.get_config()
 status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=None)
-DISPATCH_CLIENT = DispatchClient(STORAGE)
-HEURISTICS = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
+dispatch_client = DispatchClient(STORAGE)
+heuristics = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
 
 SUB_API = 'task'
 task_api = make_subapi_blueprint(SUB_API, api_version=1)
@@ -56,7 +56,7 @@ def get_task(client_info):
 
     counter = MetricsFactory('service', Metrics, name=service_name, config=config)
 
-    task = DISPATCH_CLIENT.request_work(client_id, service_name, timeout=timeout)
+    task = dispatch_client.request_work(client_id, service_name, timeout=timeout)
 
     if not task:
         # No task found in service queue
@@ -69,13 +69,13 @@ def get_task(client_info):
                                        service_name=service_name,
                                        service_version=client_info['service_version'],
                                        conf_key=conf_key)
-    service_data = DISPATCH_CLIENT.schedule_builder.services[service_name]
+    service_data = dispatch_client.schedule_builder.services[service_name]
 
     # If we are allowed, try to see if the result has been cached
     if not task.ignore_cache and not service_data.disable_cache:
         result = STORAGE.result.get_if_exists(result_key)
         if result:
-            DISPATCH_CLIENT.service_finished(task.sid, result_key, result)
+            dispatch_client.service_finished(task.sid, result_key, result)
             return make_api_response(dict(task=False))
 
         # No luck with the cache, lets dispatch the task to a client
@@ -136,10 +136,10 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
             heur_id = section['heuristic']['heur_id']
             attack_id = section['heuristic'].get('attack_id')
 
-            if HEURISTICS.get(heur_id):
+            if heuristics.get(heur_id):
                 # Assign a score for the heuristic from the datastore
-                section['heuristic']['score'] = HEURISTICS[heur_id].score
-                total_score += HEURISTICS[heur_id].score
+                section['heuristic']['score'] = heuristics[heur_id].score
+                total_score += heuristics[heur_id].score
 
                 if attack_id:
                     # Verify that the attack_id is valid
@@ -147,10 +147,10 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
                         LOGGER.warning(f"{client_info['client_id']} - {client_info['service_name']} "
                                        f"service specified an invalid attack_id in its service result, ignoring it")
                         # Assign an attack_id from the datastore if it exists
-                        section['heuristic']['attack_id'] = HEURISTICS[heur_id].attack_id or None
+                        section['heuristic']['attack_id'] = heuristics[heur_id].attack_id or None
                 else:
                     # Assign an attack_id from the datastore if it exists
-                    section['heuristic']['attack_id'] = HEURISTICS[heur_id].attack_id or None
+                    section['heuristic']['attack_id'] = heuristics[heur_id].attack_id or None
 
     # Update the total score of the result
     result['result']['score'] = total_score
@@ -167,7 +167,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
 
     conf_key = generate_conf_key(result.response.service_tool_version, task.service_config)
     result_key = result.build_key(conf_key)
-    DISPATCH_CLIENT.service_finished(task.sid, result_key, result)
+    dispatch_client.service_finished(task.sid, result_key, result)
 
     # Metrics
     if result.result.score > 0:
@@ -188,7 +188,7 @@ def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], 
 
     conf_key = generate_conf_key(error.response.service_tool_version, task.service_config)
     error_key = error.build_key(conf_key)
-    DISPATCH_CLIENT.service_failed(task.sid, error_key, error)
+    dispatch_client.service_failed(task.sid, error_key, error)
 
     # Metrics
     if error.response.status == 'FAIL_RECOVERABLE':
