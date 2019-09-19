@@ -55,6 +55,9 @@ def register_service():
             for index, heuristic in enumerate(heuristics):
                 heuristic_id = f'#{index}'  # Assign a safe name for the heuristic in case parsing fails
                 try:
+                    # Append service name to heuristic ID
+                    heuristic['heur_id'] = f"{service.name.upper()}.{str(heuristic['heur_id'])}"
+
                     heuristic = Heuristic(heuristic)
                     heuristic_id = heuristic.heur_id
                     if not STORAGE.heuristic.get_if_exists(heuristic.heur_id):
