@@ -1,5 +1,6 @@
 import os
 import tempfile
+from assemblyline.filestore import FileStoreException
 
 from flask import request
 
@@ -42,13 +43,13 @@ def download_file(sha256, client_info):
         return make_api_response({}, "The file was not found in the system.", 404)
 
     with forge.get_filestore() as f_transport, tempfile.NamedTemporaryFile() as temp_file:
-        f_transport.download(sha256, temp_file.name)
-        f_size = os.path.getsize(temp_file.name)
-
-        if f_size == 0:  # TODO: is this the correct way to check if the filestore doesn't have the file?
+        try:
+            f_transport.download(sha256, temp_file.name)
+            f_size = os.path.getsize(temp_file.name)
+            return stream_file_response(open(temp_file.name, 'rb'), sha256, f_size)
+        except FileStoreException:
+            LOGGER.exception("Couldn't find file requested by service despite having a datastore entry.")
             return make_api_response({}, "The file was not found in the system.", 404)
-
-        return stream_file_response(open(temp_file.name, 'rb'), sha256, f_size)
 
 
 @file_api.route("/", methods=["PUT"])
