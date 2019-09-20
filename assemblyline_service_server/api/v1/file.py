@@ -1,3 +1,5 @@
+import shutil
+
 import os
 import tempfile
 from assemblyline.filestore import FileStoreException
@@ -11,9 +13,11 @@ from assemblyline_service_server.api.base import make_subapi_blueprint, make_api
 from assemblyline_service_server.config import LOGGER, STORAGE
 from werkzeug.datastructures import FileStorage
 
+
 SUB_API = 'file'
 file_api = make_subapi_blueprint(SUB_API, api_version=1)
 file_api._doc = "Perform operations on file"
+
 
 
 @file_api.route("/<sha256>/", methods=["GET"])
@@ -90,8 +94,12 @@ def upload_files(client_info):
     ttl = int(request.headers['ttl'])
 
     with forge.get_filestore() as f_transport, tempfile.NamedTemporaryFile(mode='bw') as temp_file:
-        file = request.files['file']
-        file.save(temp_file.name)
+        # Try reading multipart data from 'files' or a single file post from stream
+        if request.content_type.startswith('multipart'):
+            file = request.files['file']
+            file.save(temp_file.name)
+        else:
+            shutil.copyfileobj(request.stream, temp_file)
 
         # Identify the file info of the uploaded file
         file_info = identify.fileinfo(temp_file.name)

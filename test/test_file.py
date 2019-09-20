@@ -1,3 +1,6 @@
+from contextlib import contextmanager
+
+import hashlib
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -24,7 +27,7 @@ headers = {
 }
 
 
-@pytest.fixture()
+@pytest.fixture(scope='function')
 def file_datastore():
     ds = MagicMock()
     with patch('assemblyline_service_server.api.v1.file.STORAGE', ds):
@@ -53,60 +56,53 @@ def test_download_file(client, file_datastore):
     assert response.status_code == 404
 
 
+def test_upload_new_file(client, file_datastore):
+    fs = forge.get_filestore()
 
-# def test_upload_file_inproc(helper):
-#     dest_path = ''
-#     expected_body = b'iiiiijjjjj'
-#     fs = forge.get_filestore()
-#     sha = hashlib.sha256(expected_body).hexdigest()
-#     fs.delete(sha)
-#     try:
-#         _, _, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1, callback=True, namespace='/helper')
-#         helper.emit('upload_file_chunk', 0, b'iiiii', False, 'U', sha, 1, namespace='/helper')
-#         message = helper.get_received('/helper')[0]
-#         assert message['name'] == 'chunk_upload_success'
-#         assert message['args'][0] is True
-#
-#         helper.emit('upload_file_chunk', 5, b'jjjjj', True, 'U', sha, 1, namespace='/helper')
-#         assert message['name'] == 'chunk_upload_success'
-#         assert message['args'][0] is True
-#
-#         assert fs.exists(sha)
-#         assert fs.get(sha) == expected_body
-#
-#         dest_path = os.path.join(tempfile.gettempdir(), 'uploads', sha)
-#         assert not os.path.exists(dest_path)
-#     finally:
-#         fs.delete(sha)
-#         if os.path.exists(dest_path):
-#             os.unlink(dest_path)
-#
-#
-# @pytest.mark.xfail
-# def test_upload_file_bad_hash_inproc(helper):
-#     """Upload a file where the client provided hash is wrong.
-#
-#     The file shouldn't be accepted into the system with either hash.
-#     TODO should the client be told to retry upload?
-#     """
-#     dest_path = None
-#     expected_body = b'mmmmmnnnnn'
-#     fs = forge.get_filestore()
-#     real_sha = hashlib.sha256(expected_body).hexdigest()
-#     sha = real_sha[:-4] + '0000'
-#     fs.delete(sha)
-#     try:
-#         _, _, _, _ = helper.emit('file_exists', sha, './temp_file', 'U', 1, callback=True, namespace='/helper')
-#         helper.emit('upload_file_chunk', 0, b'mmmmm', False, 'U', sha, 1, namespace='/helper')
-#         helper.emit('upload_file_chunk', 5, b'nnnnn', True, 'U', sha, 1, namespace='/helper')
-#
-#         assert not fs.exists(sha)
-#         assert not fs.exists(real_sha)
-#
-#         dest_path = os.path.join(tempfile.gettempdir(), 'uploads', sha)
-#         assert not os.path.exists(dest_path)
-#     finally:
-#         fs.delete(sha)
-#         fs.delete(real_sha)
-#         if dest_path and os.path.exists(dest_path):
-#             os.unlink(dest_path)
+    file_size = 10003
+    file_data = b'x'*file_size
+    file_hash = hashlib.sha256(file_data).hexdigest()
+
+    fs.delete(file_hash)
+
+    file_headers = dict(headers)
+    file_headers['sha256'] = file_hash
+    file_headers['classification'] = 'U'
+    file_headers['ttl'] = 1
+    file_headers['Content-Type'] = 'application/octet-stream'
+
+    try:
+        response = client.put('/api/v1/file/', headers=file_headers, data=file_data)
+        assert response.status_code == 200
+        assert fs.exists(file_hash)
+        assert file_datastore.save_or_freshen_file.call_count == 1
+    except:
+        fs.delete(file_hash)
+
+
+def test_upload_file_bad_hash(client, file_datastore):
+    fs = forge.get_filestore()
+
+    file_size = 10003
+    file_data = b'x'*file_size
+    file_hash = hashlib.sha256(file_data).hexdigest()
+    bad_hash = '0000' + file_hash[4:]
+
+    fs.delete(file_hash)
+    fs.delete(bad_hash)
+
+    file_headers = dict(headers)
+    file_headers['sha256'] = bad_hash
+    file_headers['classification'] = 'U'
+    file_headers['ttl'] = 1
+    file_headers['Content-Type'] = 'application/octet-stream'
+
+    try:
+        response = client.put('/api/v1/file/', headers=file_headers, data=file_data)
+        assert response.status_code in range(400, 500)
+        assert not fs.exists(file_hash)
+        assert not fs.exists(bad_hash)
+        assert file_datastore.save_or_freshen_file.call_count == 0
+    except:
+        fs.delete(file_hash)
+        fs.delete(bad_hash)
