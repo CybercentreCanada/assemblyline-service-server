@@ -12,7 +12,7 @@ service_api = make_subapi_blueprint(SUB_API, api_version=1)
 service_api._doc = "Perform operations on service"
 
 
-@service_api.route("/register/", methods=["PUT"])
+@service_api.route("/register/", methods=["PUT", "POST"])
 @api_login()
 def register_service(client_info):
     """
@@ -68,8 +68,10 @@ def register_service(client_info):
                         LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
                                     f"heuristic ({heuristic.heur_id}::{heuristic.name}) saved")
                 except Exception as e:
-                    LOGGER.warning(f"{client_info['client_id']} - {client_info['service_name']} "
-                                   f"invalid heuristic ({heuristic.heur_id}) ignored: {str(e)}")
+                    LOGGER.exception(f"{client_info['client_id']} - {client_info['service_name']} "
+                                     f"invalid heuristic ({heuristic_id}) ignored: {str(e)}")
+                    raise ValueError("Error parsing heuristics")
+
     except ValueError as e:  # Catch errors when building Service or Heuristic model(s)
         return make_api_response("", str(e), 400)
 

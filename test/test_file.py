@@ -1,5 +1,3 @@
-from contextlib import contextmanager
-
 import hashlib
 from unittest.mock import patch, MagicMock
 
