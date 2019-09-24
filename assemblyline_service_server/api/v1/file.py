@@ -11,7 +11,6 @@ from assemblyline.common.isotime import now_as_iso
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, stream_file_response, \
     api_login
 from assemblyline_service_server.config import LOGGER, STORAGE
-from werkzeug.datastructures import FileStorage
 
 
 SUB_API = 'file'
