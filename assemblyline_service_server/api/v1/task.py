@@ -155,6 +155,9 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     # Update the total score of the result
     result['result']['score'] = total_score
 
+    # Pop the temporary submission data
+    temp_submission_data = result.pop('temp_submission_data')
+
     result = Result(result)
 
     with forge.get_filestore() as f_transport:
@@ -167,7 +170,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
 
     conf_key = generate_conf_key(result.response.service_tool_version, task.service_config)
     result_key = result.build_key(conf_key)
-    dispatch_client.service_finished(task.sid, result_key, result)
+    dispatch_client.service_finished(task.sid, result_key, result)  # TODO: add temp_submission_data as argument when ready
 
     # Metrics
     if result.result.score > 0:
