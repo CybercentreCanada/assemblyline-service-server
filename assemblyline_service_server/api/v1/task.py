@@ -1,3 +1,5 @@
+import time
+
 import hashlib
 import json
 from typing import cast, Dict, Any, Optional
@@ -21,7 +23,7 @@ from assemblyline_service_server.config import LOGGER, STORAGE
 from assemblyline_service_server.helper.heuristics import get_heuristics
 
 config = forge.get_config()
-status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=None)
+status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=60*30)
 dispatch_client = DispatchClient(STORAGE)
 heuristics = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
 
@@ -52,7 +54,9 @@ def get_task(client_info):
     service_name = client_info['service_name']
     client_id = client_info['client_id']
     timeout = int(request.headers.get('timeout', 30))
-    status_table.set(client_id, (service_name, ServiceStatus.Idle), ttl=int(timeout * 1.5))
+    # Add a little extra to the status timeout so that the service has a chance to retry before we start to
+    # suspect it of slacking off
+    status_table.set(client_id, (service_name, ServiceStatus.Idle, time.time() + timeout + 5))
 
     counter = MetricsFactory('service', Metrics, name=service_name, config=config)
 
@@ -81,7 +85,7 @@ def get_task(client_info):
         # No luck with the cache, lets dispatch the task to a client
         counter.increment('cache_miss')
 
-    status_table.set(client_id, (service_name, ServiceStatus.Running), ttl=int(service_data.timeout * 1.5))
+    status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
     return make_api_response(dict(task=task.as_primitives()))
 
 
