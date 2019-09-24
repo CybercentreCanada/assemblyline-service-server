@@ -159,7 +159,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     result['result']['score'] = total_score
 
     # Pop the temporary submission data
-    temp_submission_data = result.pop('temp_submission_data')
+    temp_submission_data = result.pop('temp_submission_data', None)
 
     result = Result(result)
 
