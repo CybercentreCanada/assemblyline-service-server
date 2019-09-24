@@ -117,7 +117,6 @@ def task_finished(client_info):
             missing_files = handle_task_result(exec_time, task, result, counter, client_info)
             if missing_files:
                 return make_api_response(dict(success=False, missing_files=missing_files))
-
             return make_api_response(dict(success=True))
 
         elif 'error' in data:  # Task created an error
