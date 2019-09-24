@@ -174,7 +174,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
 
     conf_key = generate_conf_key(result.response.service_tool_version, task.service_config)
     result_key = result.build_key(conf_key)
-    dispatch_client.service_finished(task.sid, result_key, result)  # TODO: add temp_submission_data as argument when ready
+    dispatch_client.service_finished(task.sid, result_key, result, temp_submission_data)
 
     # Metrics
     if result.result.score > 0:
