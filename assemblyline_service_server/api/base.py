@@ -2,10 +2,11 @@ import functools
 from sys import exc_info
 from traceback import format_tb
 
+import elasticapm
 from flask import current_app, Blueprint, jsonify, make_response, Response, request
 
 from assemblyline.common.str_utils import safe_str
-from assemblyline_service_server.config import BUILD_LOWER, BUILD_MASTER, BUILD_NO, LOGGER, AUTH_KEY
+from assemblyline_service_server.config import BUILD_LOWER, BUILD_MASTER, BUILD_NO, LOGGER, AUTH_KEY, config
 from assemblyline_service_server.logger import log_with_traceback
 
 API_PREFIX = "/api"
@@ -33,6 +34,9 @@ class api_login:
                 service_version=request.headers['service_version'],
                 service_tool_version=request.headers.get('service_tool_version'),
             )
+
+            if config.core.metrics.apm_server.server_url is not None:
+                elasticapm.set_user_context(username=client_info['service_name'])
 
             kwargs['client_info'] = client_info
             return func(*args, **kwargs)

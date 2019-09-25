@@ -1,22 +1,19 @@
-import shutil
-
 import os
+import shutil
 import tempfile
-from assemblyline.filestore import FileStoreException
 
 from flask import request
 
 from assemblyline.common import forge, identify
 from assemblyline.common.isotime import now_as_iso
+from assemblyline.filestore import FileStoreException
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, stream_file_response, \
     api_login
 from assemblyline_service_server.config import LOGGER, STORAGE
 
-
 SUB_API = 'file'
 file_api = make_subapi_blueprint(SUB_API, api_version=1)
 file_api._doc = "Perform operations on file"
-
 
 
 @file_api.route("/<sha256>/", methods=["GET"])
@@ -51,7 +48,9 @@ def download_file(sha256, client_info):
             f_size = os.path.getsize(temp_file.name)
             return stream_file_response(open(temp_file.name, 'rb'), sha256, f_size)
         except FileStoreException:
-            LOGGER.exception("Couldn't find file requested by service despite having a datastore entry.")
+            LOGGER.exception(f"{client_info['client_id']} - {client_info['service_name']} "
+                             f"Couldn't find file (SHA256: {sha256}) requested by service " 
+                             "despite having a datastore entry.")
             return make_api_response({}, "The file was not found in the system.", 404)
 
 

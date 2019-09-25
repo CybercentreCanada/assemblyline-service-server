@@ -1,15 +1,13 @@
-import time
-
 import hashlib
 import json
+import time
 from typing import cast, Dict, Any, Optional
 
 from flask import request
 
-from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
-from assemblyline.remote.datatypes.hash import ExpiringHash
 from assemblyline.common import forge
 from assemblyline.common.attack_map import attack_map
+from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
 from assemblyline.common.forge import CachedObject
 from assemblyline.common.metrics import MetricsFactory
 from assemblyline.odm.messages.service_heartbeat import Metrics
@@ -17,6 +15,7 @@ from assemblyline.odm.messages.task import Task as ServiceTask
 from assemblyline.odm.models.error import Error
 from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.result import Result
+from assemblyline.remote.datatypes.hash import ExpiringHash
 from assemblyline_core.dispatching.client import DispatchClient
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
 from assemblyline_service_server.config import LOGGER, STORAGE
@@ -127,7 +126,7 @@ def task_finished(client_info):
             return make_api_response("", "No result or error provided by service.", 400)
 
     except ValueError as e:  # Catch errors when building Task or Result model
-        return make_api_response("", str(e), 400)
+        return make_api_response("", e, 400)
 
 
 def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], counter: MetricsFactory,

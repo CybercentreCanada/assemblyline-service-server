@@ -1,5 +1,6 @@
 import logging
 
+from elasticapm.contrib.flask import ElasticAPM
 from flask import Flask
 from flask.logging import default_handler
 
@@ -28,6 +29,11 @@ app.logger.setLevel(LOGGER.getEffectiveLevel())
 app.logger.removeHandler(default_handler)
 for ph in LOGGER.parent.handlers:
     app.logger.addHandler(ph)
+
+# Setup APMs
+if config.config.core.metrics.apm_server.server_url is not None:
+    app.logger.info(f"Exporting application metrics to: {config.config.core.metrics.apm_server.server_url}")
+    ElasticAPM(app, server_url=config.config.core.metrics.apm_server.server_url, service_name="al_svc_server")
 
 
 if __name__ == '__main__':
