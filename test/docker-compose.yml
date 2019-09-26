@@ -1,23 +1,6 @@
 version: '2.4'
 
 services:
-  al_service:
-    image: cccs/assemblyline_dev:latest
-    ports:
-      - '5003:5003'
-    volumes:
-      - /opt/alv4/alv4_service_server/test/config/:/etc/assemblyline/
-      - /opt/alv4/:/opt/alv4/
-    working_dir: /opt/alv4/alv4_service_server/assemblyline_service_server/
-    command: python3 app.py
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_started
-
   elasticsearch:
     image: sgaroncse/elasticsearch:7.3.0
     environment:
