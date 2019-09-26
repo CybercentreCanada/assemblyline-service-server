@@ -45,7 +45,7 @@ class api_login:
 
 
 def make_api_response(data, err="", status_code=200, cookies=None):
-    if type(err) is Exception:
+    if isinstance(err, Exception):
         trace = exc_info()[2]
         err = ''.join(['\n'] + format_tb(trace) + [f"{err.__class__.__name__}: {str(err)}\n"]).rstrip('\n')
         log_with_traceback(LOGGER, trace, "Exception", is_exception=True)

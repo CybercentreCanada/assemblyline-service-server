@@ -73,7 +73,7 @@ def register_service(client_info):
                     raise ValueError("Error parsing heuristics")
 
     except ValueError as e:  # Catch errors when building Service or Heuristic model(s)
-        return make_api_response("", e, 400)
+        return make_api_response("", err=e, status_code=400)
 
     return make_api_response(dict(
         keep_alive=keep_alive,

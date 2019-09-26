@@ -1,6 +1,3 @@
-from contextlib import contextmanager
-
-import hashlib
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -10,7 +7,6 @@ from assemblyline.odm.randomizer import random_minimal_obj
 
 from assemblyline.odm.models.service import Service
 
-from assemblyline.common import forge
 from assemblyline.odm import randomizer
 from assemblyline_service_server.config import AUTH_KEY
 from assemblyline_service_server import app
@@ -19,8 +15,6 @@ from assemblyline_service_server import app
 headers = {
     'Container-Id': randomizer.get_random_hash(12),
     'X-APIKey': AUTH_KEY,
-    # 'Service-Name': randomizer.get_random_service_name(),
-    # 'Service-Version': randomizer.get_random_service_version(),
     'Service-Tool-Version': randomizer.get_random_hash(64),
     'X-Forwarded-For': '127.0.0.1',
 }
@@ -46,7 +40,7 @@ def test_register_existing_service(client, storage):
     headers['Service-Version'] = service.version
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service.as_primitives())
-    assert result.ok
+    assert result.status_code == 200
     assert storage.heuristic.save.call_count == 0
 
     assert result.json['api_response']['keep_alive'] is True
@@ -61,7 +55,7 @@ def test_register_bad_service(client, storage):
     del service['name']
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service)
-    assert not result.ok
+    assert result.status_code == 400
 
 
 def test_register_new_service(client, storage):
@@ -74,7 +68,7 @@ def test_register_new_service(client, storage):
     headers['Service-Version'] = service.version
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service.as_primitives())
-    assert result.ok
+    assert result.status_code == 200
     assert storage.heuristic.save.call_count == 0
     assert storage.service.save.call_count == 1
     assert storage.service_delta.save.call_count == 1
@@ -93,7 +87,7 @@ def test_register_new_service_version(client, storage):
     headers['Service-Version'] = service.version
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service.as_primitives())
-    assert result.ok
+    assert result.status_code == 200
     assert storage.heuristic.save.call_count == 0
     assert storage.service.save.call_count == 0
     assert storage.service_delta.save.call_count == 1
@@ -113,7 +107,7 @@ def test_register_new_heuristics(client, storage):
     headers['Service-Version'] = service['version']
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service)
-    assert result.ok
+    assert result.status_code == 200
     assert storage.heuristic.save.call_count == 1
 
     assert result.json['api_response']['keep_alive'] is True
@@ -130,7 +124,7 @@ def test_register_existing_heuristics(client, storage):
     headers['Service-Version'] = service['version']
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service)
-    assert result.ok
+    assert result.status_code == 200
     assert storage.heuristic.save.call_count == 0
 
     assert result.json['api_response']['keep_alive'] is True
@@ -147,4 +141,4 @@ def test_register_bad_heuristics(client, storage):
     headers['Service-Version'] = service['version']
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service)
-    assert not result.ok
+    assert result.status_code == 400

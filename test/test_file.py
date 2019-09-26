@@ -39,7 +39,7 @@ def test_download_file(client, file_datastore):
     fs.put('test_file', b'x' * file_size)
     try:
         response = client.get('/api/v1/file/test_file/', headers=headers)
-        assert response.ok
+        assert response.status_code == 200
         assert response.data == (b'x' * file_size)
     finally:
         fs.delete('test_file')
@@ -71,10 +71,10 @@ def test_upload_new_file(client, file_datastore):
 
     try:
         response = client.put('/api/v1/file/', headers=file_headers, data=file_data)
-        assert response.ok
+        assert response.status_code == 200
         assert fs.exists(file_hash)
         assert file_datastore.save_or_freshen_file.call_count == 1
-    except:
+    finally:
         fs.delete(file_hash)
 
 
@@ -101,6 +101,6 @@ def test_upload_file_bad_hash(client, file_datastore):
         assert not fs.exists(file_hash)
         assert not fs.exists(bad_hash)
         assert file_datastore.save_or_freshen_file.call_count == 0
-    except:
+    finally:
         fs.delete(file_hash)
         fs.delete(bad_hash)

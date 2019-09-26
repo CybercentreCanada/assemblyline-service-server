@@ -115,8 +115,13 @@ def upload_files(client_info):
             if not f_transport.exists(file_info['sha256']):
                 f_transport.upload(temp_file.name, file_info['sha256'])
         else:
-            LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
-                        f"uploaded file (SHA256: {file_info['sha256']}) doesn't match expected file (SHA256: {sha256})")
+            LOGGER.warning(f"{client_info['client_id']} - {client_info['service_name']} "
+                           f"uploaded file (SHA256: {file_info['sha256']}) doesn't match "
+                           f"expected file (SHA256: {sha256})")
+            return make_api_response(dict(success=False),
+                                     err=f"Uploaded file does not match expected "
+                                         f"file hash. [{file_info['sha256']} != {sha256}]",
+                                     status_code=400)
 
     LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
                 f"successfully uploaded file (SHA256: {file_info['sha256']})")
