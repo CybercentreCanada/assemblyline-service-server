@@ -1,150 +1,145 @@
-# from unittest import mock
-#
-# import uuid
-# import hashlib
-# import time
-# import pytest
-# from assemblyline.remote.datatypes import get_client
-# from flask import Flask
-# import flask_socketio
-#
-#
-# from assemblyline.odm import randomizer
-# from assemblyline.common import forge
-# from assemblyline.remote.datatypes.queues.named import NamedQueue
-# from assemblyline_service_server.config import AUTH_KEY
-# from assemblyline_service_server.sio.tasking import TaskingNamespace
-# from assemblyline_core.dispatching.dispatcher import ServiceTask
-# from assemblyline_core.dispatching.dispatcher import service_queue_name
-#
-# SECRET_KEY = uuid.uuid4().hex
-#
-#
-# class RedisTime:
-#     def __init__(self):
-#         self.current = None
-#
-#     def __call__(self):
-#         if self.current is not None:
-#             return self.current, 0
-#         return time.time(), 0
-#
-#
-# @pytest.fixture(scope='function')
-# def redis():
-#     config = forge.get_config()
-#     client = get_client(
-#         config.core.metrics.redis.host,
-#         config.core.metrics.redis.port,
-#         8,
-#         False
-#     )
-#     client.flushdb()
-#     yield client
-#     client.flushdb()
-#
-#
-# service_name = 'Extract'
-#
-#
-# @pytest.fixture(scope='function')
-# def ds():
-#     ds = forge.get_datastore()
-#     ds.service_delta.update(service_name, [
-#         (ds.service_delta.UPDATE_SET, 'enabled', True)
-#     ])
-#     return ds
-#
-#
-# @pytest.fixture(scope='function')
-# def tasking_namespace(redis):
-#     tn = TaskingNamespace('/tasking', redis)
-#     try:
-#         yield tn
-#     finally:
-#         tn.running = False
-#
-#
-# @pytest.fixture()
-# def headers():
-#     return {
-#         'Container-Id': randomizer.get_random_hash(12),
-#         'Service-API-Auth-Key': AUTH_KEY,
-#         'Service-Name': service_name,
-#         'Service-Version': randomizer.get_random_service_version(),
-#         'Service-Tool-Version': randomizer.get_random_hash(64),
-#         'Service-Timeout': str(300),
-#         'X-Forwarded-For': '127.0.0.1',
-#     }
-#
-#
-# @pytest.fixture(scope="function")
-# def tasking(redis, tasking_namespace, headers):
-#     # Create our own flask and socketio so we can control redis for mocking
-#     app = Flask('svc-socketio')
-#     app.config['SECRECT_KEY'] = SECRET_KEY
-#     socketio = flask_socketio.SocketIO(app, async_mode='threading')
-#
-#     # Loading the different namespaces
-#     # socketio.on_namespace(HelperNamespace('/helper'))
-#     socketio.on_namespace(tasking_namespace)
-#
-#     client = flask_socketio.SocketIOTestClient(app, socketio, namespace='/tasking', headers=headers)
-#     yield client
-#     tasking_namespace.running = False
-#     if client.is_connected('/tasking'):
-#         client.disconnect('/tasking')
-#
-#
-# def test_connect_disconnect(tasking, tasking_namespace, headers):
-#     assert len(tasking_namespace.clients) == 1
-#     client_data = list(tasking_namespace.clients.values())[0]
-#     assert headers['Container-Id'] == client_data.container_id
-#     assert headers['Service-Name'] == client_data.service_name
-#     tasking.disconnect('/tasking')
-#     assert len(tasking_namespace.clients) == 0
-#
-#
-# def test_get_task(redis, tasking, headers, tasking_namespace):
-#
-#     client_id, client_data = list(tasking_namespace.clients.items())[0]
-#     assert headers['Container-Id'] == client_data.container_id
-#     assert service_name == client_data.service_name
-#
-#     tasking.emit('wait_for_task', namespace='/tasking')
-#
-#     assert client_id in tasking_namespace.available_clients[service_name]
-#
-#     work_queue = NamedQueue(service_queue_name(service_name), host=redis)
-#     work_queue.push(ServiceTask({
-#         'fileinfo': {
-#             'magic': 'file',
-#             'md5': hashlib.md5(b'test_get_task').hexdigest(),
-#             'mime': 'file',
-#             'sha1': hashlib.sha1(b'test_get_task').hexdigest(),
-#             'sha256': hashlib.sha256(b'test_get_task').hexdigest(),
-#             'size': 100,
-#             'type': 'unknown',
-#         },
-#         'service_name': service_name,
-#         'max_files': 10,
-#         'ttl': 10,
-#     }).as_primitives())
-#
-#     start = time.time()
-#     message = None
-#     while time.time() - start < 10 and message is None:
-#         for msg in tasking.get_received('/tasking'):
-#             message = msg
-#         else:
-#             time.sleep(0.1)
-#
-#     assert client_id in tasking_namespace.banned_clients
-#     assert message['name'] == 'got_task'
+from unittest.mock import patch, MagicMock
+
+import pytest
+
+from assemblyline.odm.models.result import Result
+from assemblyline.odm.models.error import Error
+from assemblyline.odm.messages.task import Task
+from assemblyline.odm.randomizer import random_minimal_obj
+from assemblyline.common.constants import SERVICE_STATE_HASH
+from assemblyline.remote.datatypes.hash import ExpiringHash
+from assemblyline.common import forge
+from assemblyline.odm import randomizer
+from assemblyline.remote.datatypes import get_client
+
+from assemblyline_service_server import app
+from assemblyline_service_server.api.v1 import task
+from assemblyline_service_server.config import AUTH_KEY
+
+
+@pytest.fixture(scope='function')
+def redis():
+    config = forge.get_config()
+    client = get_client(
+        config.core.metrics.redis.host,
+        config.core.metrics.redis.port,
+        8,
+        False
+    )
+    client.flushdb()
+    yield client
+    client.flushdb()
+
+
+service_name = 'Extract'
+
+
+headers = {
+    'Container-Id': randomizer.get_random_hash(12),
+    'X-APIKey': AUTH_KEY,
+    'Service-Name': service_name,
+    'Service-Version': randomizer.get_random_service_version(),
+    'Service-Tool-Version': randomizer.get_random_hash(64),
+    'Timeout': 1,
+    'X-Forwarded-For': '127.0.0.1',
+}
+
+
+@pytest.fixture(scope='function')
+def storage():
+    ds = MagicMock()
+    with patch('assemblyline_service_server.api.v1.task.STORAGE', ds):
+        yield ds
+
+
+@pytest.fixture(scope='function')
+def heuristics():
+    ds = MagicMock()
+    with patch('assemblyline_service_server.api.v1.task.heuristics', ds):
+        yield ds
+
+
+@pytest.fixture(scope='function')
+def dispatch_client():
+    ds = MagicMock()
+    with patch('assemblyline_service_server.api.v1.task.dispatch_client', ds):
+        yield ds
+
+
+@pytest.fixture()
+def client(redis, storage, heuristics, dispatch_client):
+    client = app.app.test_client()
+    task.status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=60 * 30, host=redis)
+    yield client
+
+
+def test_task_timeout(client, dispatch_client):
+    dispatch_client.request_work.return_value = None
+    resp = client.get('/api/v1/task/', headers=headers)
+    assert resp.status_code == 200
+    assert not resp.json['api_response']['task']
+
+
+def test_task_ignored_then_timeout(client, dispatch_client, storage):
+    # Put a task "in the queue"
+    task = random_minimal_obj(Task)
+    task.ignore_cache = False
+    dispatch_client.request_work.side_effect = [task, None]
+    dispatch_client.schedule_builder.services[service_name].timeout = 100
+    dispatch_client.schedule_builder.services[service_name].disable_cache = False
+
+    resp = client.get('/api/v1/task/', headers=headers)
+    assert resp.status_code == 200
+    assert dispatch_client.service_finished.call_count == 1
+    assert not resp.json['api_response']['task']
+
+
+def test_task_dispatch(client, dispatch_client, storage):
+    # Put a task "in the queue"
+    task = random_minimal_obj(Task)
+    task.ignore_cache = False
+    storage.result.get_if_exists.return_value = None
+    dispatch_client.request_work.return_value = task
+    dispatch_client.schedule_builder.services[service_name].timeout = 100
+    dispatch_client.schedule_builder.services[service_name].disable_cache = False
+
+    resp = client.get('/api/v1/task/', headers=headers)
+    assert resp.status_code == 200
+    assert resp.json['api_response']['task'] == task.as_primitives()
+
+
+def test_finish_error(client, dispatch_client):
+    task = random_minimal_obj(Task)
+    error = random_minimal_obj(Error)
+    message = {'task': task.as_primitives(), 'error': error.as_primitives()}
+    resp = client.post('/api/v1/task/', headers=headers, json=message)
+    assert resp.status_code == 200
+    assert dispatch_client.service_failed.call_count == 1
+    assert dispatch_client.service_failed.call_args[0][0] == task.sid
+    assert dispatch_client.service_failed.call_args[0][2] == error
+
+
+def test_finish_minimal(client, dispatch_client):
+    task = random_minimal_obj(Task)
+    result = random_minimal_obj(Result)
+    message = {'task': task.as_primitives(), 'result': result.as_primitives()}
+    resp = client.post('/api/v1/task/', headers=headers, json=message)
+    assert resp.status_code == 200
+    assert dispatch_client.service_finished.call_count == 1
+    assert dispatch_client.service_finished.call_args[0][0] == task.sid
+    assert dispatch_client.service_finished.call_args[0][2] == result
+
+
+# def test_finish_heuristic():
+#     raise NotImplementedError()
 #
 #
+# def test_finish_missing_file():
+#     raise NotImplementedError()
+
+
 # def test_flush_on_disable(tasking_namespace, ds, redis):
-#
+#     """TODO move this test and feature to dispatcher?"""
 #     dc = tasking_namespace.dispatch_client.service_failed = mock.MagicMock()
 #
 #     work_queue = NamedQueue(service_queue_name(service_name), host=redis)
@@ -179,37 +174,4 @@
 #         (ds.service_delta.UPDATE_SET, 'enabled', True)
 #     ])
 #
-#
-# #
-# # def test_send_result():
-# #     raise NotImplementedError()
-# #
-# #
-# # def test_timeout():
-# #     raise NotImplementedError()
-# #
-
-# @pytest.fixture(scope="function")
-# def sio():
-#     sio = socketio.Client()
-#     headers = {
-#         'Container-Id': randomizer.get_random_hash(12),
-#         'Service-API-Auth-Key': AUTH_KEY,
-#         'Service-Name': randomizer.get_random_service_name(),
-#         'Service-Version': randomizer.get_random_service_version(),
-#         'Service-Tool-Version': randomizer.get_random_hash(64),
-#         'Service-Timeout': str(300),
-#     }
-#
-#     sio.connect('http://localhost:5003', namespaces=['/helper'], headers=headers)
-#
-#     return sio
-#
-#
-# @pytest.fixture(scope="function")
-# def helper():
-
-#     client = flask_socketio.SocketIOTestClient(app.app, app.socketio, namespace='/helper', headers=headers)
-#     yield client
-#     client.disconnect('/helper')
 #
