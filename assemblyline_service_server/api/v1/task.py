@@ -135,7 +135,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     total_score = 0
     for section in result['result']['sections']:
         if section.get('heuristic'):
-            heur_id = section['heuristic']['heur_id']
+            heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
             attack_id = section['heuristic'].get('attack_id')
 
             if heuristics.get(heur_id):
