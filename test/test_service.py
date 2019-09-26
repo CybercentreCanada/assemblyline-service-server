@@ -46,7 +46,7 @@ def test_register_existing_service(client, storage):
     headers['Service-Version'] = service.version
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service.as_primitives())
-    assert result.status_code == 200
+    assert result.ok
     assert storage.heuristic.save.call_count == 0
 
     assert result.json['api_response']['keep_alive'] is True
@@ -61,7 +61,7 @@ def test_register_bad_service(client, storage):
     del service['name']
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service)
-    assert result.status_code == 400
+    assert not result.ok
 
 
 def test_register_new_service(client, storage):
@@ -74,7 +74,7 @@ def test_register_new_service(client, storage):
     headers['Service-Version'] = service.version
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service.as_primitives())
-    assert result.status_code == 200
+    assert result.ok
     assert storage.heuristic.save.call_count == 0
     assert storage.service.save.call_count == 1
     assert storage.service_delta.save.call_count == 1
@@ -93,7 +93,7 @@ def test_register_new_service_version(client, storage):
     headers['Service-Version'] = service.version
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service.as_primitives())
-    assert result.status_code == 200
+    assert result.ok
     assert storage.heuristic.save.call_count == 0
     assert storage.service.save.call_count == 0
     assert storage.service_delta.save.call_count == 1
@@ -113,7 +113,7 @@ def test_register_new_heuristics(client, storage):
     headers['Service-Version'] = service['version']
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service)
-    assert result.status_code == 200
+    assert result.ok
     assert storage.heuristic.save.call_count == 1
 
     assert result.json['api_response']['keep_alive'] is True
@@ -130,7 +130,7 @@ def test_register_existing_heuristics(client, storage):
     headers['Service-Version'] = service['version']
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service)
-    assert result.status_code == 200
+    assert result.ok
     assert storage.heuristic.save.call_count == 0
 
     assert result.json['api_response']['keep_alive'] is True
@@ -147,4 +147,4 @@ def test_register_bad_heuristics(client, storage):
     headers['Service-Version'] = service['version']
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service)
-    assert result.status_code == 400
+    assert not result.ok
