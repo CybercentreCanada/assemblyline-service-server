@@ -85,8 +85,8 @@ def get_task(client_info):
         status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
         return make_api_response(dict(task=task.as_primitives()))
     finally:
-        export_metrics_once(service_name, Metrics, dict(execute=1, cache_miss=1 if cache_miss else 0), host=client_id,
-                            counter_type='service')
+        export_metrics_once(service_name, Metrics, dict(execute=1, cache_miss=int(cache_miss)),
+                            host=client_id, counter_type='service')
 
 
 @task_api.route("/", methods=["POST"])

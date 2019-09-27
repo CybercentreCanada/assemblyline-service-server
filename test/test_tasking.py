@@ -5,7 +5,7 @@ import pytest
 from assemblyline.odm.models.result import Result
 from assemblyline.odm.models.error import Error
 from assemblyline.odm.messages.task import Task
-from assemblyline.odm.randomizer import random_minimal_obj
+from assemblyline.odm.randomizer import random_minimal_obj, random_model_obj
 from assemblyline.common.constants import SERVICE_STATE_HASH
 from assemblyline.remote.datatypes.hash import ExpiringHash
 from assemblyline.common import forge
@@ -130,12 +130,46 @@ def test_finish_minimal(client, dispatch_client):
     assert dispatch_client.service_finished.call_args[0][2] == result
 
 
-# def test_finish_heuristic():
-#     raise NotImplementedError()
-#
-#
-# def test_finish_missing_file():
-#     raise NotImplementedError()
+def test_finish_heuristic(client, dispatch_client, heuristics):
+    task = random_minimal_obj(Task)
+
+    result: Result = random_model_obj(Result)
+    while not any(sec.heuristic for sec in result.result.sections):
+        result: Result = random_model_obj(Result)
+
+    heuristics_count = sum(int(sec.heuristic is not None) for sec in result.result.sections)
+
+    result.result.score = 99999
+    result.response.extracted = []
+    result.response.supplementary = []
+
+    message = {'task': task.as_primitives(), 'result': result.as_primitives()}
+    resp = client.post('/api/v1/task/', headers=headers, json=message)
+    assert resp.status_code == 200
+    assert dispatch_client.service_finished.call_count == 1
+    assert dispatch_client.service_finished.call_args[0][0] == task.sid
+    # Mock objects are always one on conversion to int, being changed to this, means that it looked at the
+    # mocked out heuristics to load the score.
+    assert dispatch_client.service_finished.call_args[0][2].result.score == 1
+    assert heuristics.get.call_count == heuristics_count
+
+
+def test_finish_missing_file(client, dispatch_client, heuristics):
+    task = random_minimal_obj(Task)
+    fs = forge.get_filestore()
+
+    result: Result = random_minimal_obj(Result)
+    while not result.response.extracted:
+        result: Result = random_model_obj(Result)
+        result.response.extracted = [x for x in result.response.extracted if not fs.exists(x.sha256)]
+    missing = {x.sha256 for x in result.response.extracted if not fs.exists(x.sha256)}
+    missing |= {x.sha256 for x in result.response.supplementary if not fs.exists(x.sha256)}
+
+    message = {'task': task.as_primitives(), 'result': result.as_primitives()}
+    resp = client.post('/api/v1/task/', headers=headers, json=message)
+    assert resp.status_code == 200
+    assert resp.json['api_response']['success'] is False
+    assert set(resp.json['api_response']['missing_files']) == missing
 
 
 # def test_flush_on_disable(tasking_namespace, ds, redis):
