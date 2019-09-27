@@ -9,12 +9,12 @@ from assemblyline.common import forge
 from assemblyline.common.attack_map import attack_map
 from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
 from assemblyline.common.forge import CachedObject
-from assemblyline.common.metrics import MetricsFactory
 from assemblyline.odm.messages.service_heartbeat import Metrics
 from assemblyline.odm.messages.task import Task as ServiceTask
 from assemblyline.odm.models.error import Error
 from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.result import Result
+from assemblyline.remote.datatypes.exporting_counter import export_metrics_once
 from assemblyline.remote.datatypes.hash import ExpiringHash
 from assemblyline_core.dispatching.client import DispatchClient
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
@@ -49,7 +49,6 @@ def get_task(client_info):
     {'keep_alive': true}
 
     """
-
     service_name = client_info['service_name']
     client_id = client_info['client_id']
     timeout = int(request.headers.get('timeout', 30))
@@ -57,7 +56,7 @@ def get_task(client_info):
     # suspect it of slacking off
     status_table.set(client_id, (service_name, ServiceStatus.Idle, time.time() + timeout + 5))
 
-    counter = MetricsFactory('service', Metrics, name=service_name, config=config)
+    cache_miss = False
 
     task = dispatch_client.request_work(client_id, service_name, timeout=timeout)
 
@@ -65,27 +64,29 @@ def get_task(client_info):
         # No task found in service queue
         return make_api_response(dict(task=False))
 
-    counter.increment('execute')
+    try:
+        conf_key = generate_conf_key(client_info['service_tool_version'], task.service_config)
+        result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
+                                           service_name=service_name,
+                                           service_version=client_info['service_version'],
+                                           conf_key=conf_key)
+        service_data = dispatch_client.schedule_builder.services[service_name]
 
-    conf_key = generate_conf_key(client_info['service_tool_version'], task.service_config)
-    result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
-                                       service_name=service_name,
-                                       service_version=client_info['service_version'],
-                                       conf_key=conf_key)
-    service_data = dispatch_client.schedule_builder.services[service_name]
+        # If we are allowed, try to see if the result has been cached
+        if not task.ignore_cache and not service_data.disable_cache:
+            result = STORAGE.result.get_if_exists(result_key)
+            if result:
+                dispatch_client.service_finished(task.sid, result_key, result)
+                return make_api_response(dict(task=False))
 
-    # If we are allowed, try to see if the result has been cached
-    if not task.ignore_cache and not service_data.disable_cache:
-        result = STORAGE.result.get_if_exists(result_key)
-        if result:
-            dispatch_client.service_finished(task.sid, result_key, result)
-            return make_api_response(dict(task=False))
+            # No luck with the cache, lets dispatch the task to a client
+            cache_miss = True
 
-        # No luck with the cache, lets dispatch the task to a client
-        counter.increment('cache_miss')
-
-    status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
-    return make_api_response(dict(task=task.as_primitives()))
+        status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
+        return make_api_response(dict(task=task.as_primitives()))
+    finally:
+        export_metrics_once(service_name, Metrics, dict(execute=1, cache_miss=1 if cache_miss else 0), host=client_id,
+                            counter_type='service')
 
 
 @task_api.route("/", methods=["POST"])
@@ -106,21 +107,19 @@ def task_finished(client_info):
     data = request.json
     exec_time = data.get('exec_time')
 
-    counter = MetricsFactory('service', Metrics, name=client_info['service_name'], config=config)
-
     try:
         task = ServiceTask(data['task'])
 
         if 'result' in data:  # Task created a result
             result = data['result']
-            missing_files = handle_task_result(exec_time, task, result, counter, client_info)
+            missing_files = handle_task_result(exec_time, task, result, client_info)
             if missing_files:
                 return make_api_response(dict(success=False, missing_files=missing_files))
             return make_api_response(dict(success=True))
 
         elif 'error' in data:  # Task created an error
             error = data['error']
-            handle_task_error(exec_time, task, error, counter, client_info)
+            handle_task_error(exec_time, task, error, client_info)
             return make_api_response(dict(success=True))
         else:
             return make_api_response("", "No result or error provided by service.", 400)
@@ -129,8 +128,10 @@ def task_finished(client_info):
         return make_api_response("", e, 400)
 
 
-def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], counter: MetricsFactory,
-                       client_info: Dict[str, str]):
+def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], client_info: Dict[str, str]):
+    service_name = client_info['service_name']
+    client_id = client_info['client_id']
+
     # Add scores to the heuristics, if any section set a heuristic
     total_score = 0
     for section in result['result']['sections']:
@@ -175,17 +176,20 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     dispatch_client.service_finished(task.sid, result_key, result, temp_submission_data)
 
     # Metrics
+
     if result.result.score > 0:
-        counter.increment('scored')
+        export_metrics_once(service_name, Metrics, dict(scored=1), host=client_id, counter_type='service')
     else:
-        counter.increment('not_scored')
+        export_metrics_once(service_name, Metrics, dict(not_scored=1), host=client_id, counter_type='service')
 
     LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
                 f"successfully completed task (SID: {task.sid}){f' in {exec_time}ms' if exec_time else ''}")
 
 
-def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], counter: MetricsFactory,
-                      client_info: Dict[str, str]) -> None:
+def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], client_info: Dict[str, str]) -> None:
+    service_name = client_info['service_name']
+    client_id = client_info['client_id']
+
     LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
                 f"failed to complete task (SID: {task.sid}){f' in {exec_time}ms' if exec_time else ''}")
 
@@ -197,9 +201,9 @@ def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], 
 
     # Metrics
     if error.response.status == 'FAIL_RECOVERABLE':
-        counter.increment('fail_recoverable')
+        export_metrics_once(service_name, Metrics, dict(fail_recoverable=1), host=client_id, counter_type='service')
     else:
-        counter.increment('fail_nonrecoverable')
+        export_metrics_once(service_name, Metrics, dict(fail_nonrecoverable=1), host=client_id, counter_type='service')
 
 
 def generate_conf_key(service_tool_version: Optional[str], service_config: Dict[str, Any]):
