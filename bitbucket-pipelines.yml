@@ -43,6 +43,7 @@ pipelines:
     v*:
       - step:
           name: Build Package
+          image: python:3.7
           script:
             - pip install wheel
             - python setup.py bdist_wheel
@@ -52,6 +53,7 @@ pipelines:
       - parallel:
         - step:
             name: Test 3.7
+            image: python:3.7
             script: &deploy_test
               - rm -rf service setup.py  # Make sure we are running on the package from the prior build
               - apt update
@@ -72,6 +74,7 @@ pipelines:
 #            services: *services
       - step:
           name: Deploy to Test PyPI
+          image: python:3.7
           deployment: test_pypi
           script:
             - pip install twine
@@ -79,6 +82,7 @@ pipelines:
             - twine upload --skip-existing --repository-url $TEST_REPOSITORY_URL dist/*
       - step:
           name: Deploy to PyPI
+          image: python:3.7
           deployment: pypi
           script:
             - pip install twine
@@ -86,6 +90,7 @@ pipelines:
             - twine upload --skip-existing dist/*
       - step:
           name: Deploy to Docker Hub
+          image: python:3.7
           services: [docker]
           deployment: container
           script:
