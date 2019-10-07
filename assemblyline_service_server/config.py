@@ -21,7 +21,6 @@ AUTH_KEY = os.environ.get('SERVICE_API_AUTH_KEY', 'ThisIsARandomAuthKey...Change
 RATE_LIMITER = Counters(prefix="quota",
                         host=config.core.redis.nonpersistent.host,
                         port=config.core.redis.nonpersistent.port,
-                        db=config.core.redis.nonpersistent.db,
                         track_counters=True)
 
 # End of Configuration

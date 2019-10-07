@@ -23,7 +23,6 @@ def redis():
     client = get_client(
         config.core.metrics.redis.host,
         config.core.metrics.redis.port,
-        8,
         False
     )
     client.flushdb()
