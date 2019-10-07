@@ -72,10 +72,13 @@ def register_service(client_info):
                                      f"invalid heuristic ({heuristic_id}) ignored: {str(e)}")
                     raise ValueError("Error parsing heuristics")
 
+        service_config = STORAGE.get_service_with_delta(service.name, as_obj=False)
+
     except ValueError as e:  # Catch errors when building Service or Heuristic model(s)
         return make_api_response("", err=e, status_code=400)
 
     return make_api_response(dict(
         keep_alive=keep_alive,
         new_heuristics=new_heuristics,
+        service_config=service_config,
     ))
