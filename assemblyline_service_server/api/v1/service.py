@@ -80,5 +80,5 @@ def register_service(client_info):
     return make_api_response(dict(
         keep_alive=keep_alive,
         new_heuristics=new_heuristics,
-        service_config=service_config,
+        service_config=service_config or dict(),
     ))
