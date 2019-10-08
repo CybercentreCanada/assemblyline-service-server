@@ -2,7 +2,7 @@ version: '2.4'
 
 services:
   elasticsearch:
-    image: sgaroncse/elasticsearch:7.3.0
+    image: sgaroncse/elasticsearch:7.4.0
     environment:
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
       DISCOVERY_TYPE: "single-node"
