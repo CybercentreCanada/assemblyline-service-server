@@ -34,6 +34,8 @@ def storage():
 
 
 def test_register_existing_service(client, storage):
+    config_block = 'A CONFIG OBJECT FOR SURE'
+    storage.get_service_with_delta.return_value = config_block
     service = random_minimal_obj(Service)
 
     headers['Service-Name'] = service.name
@@ -45,6 +47,7 @@ def test_register_existing_service(client, storage):
 
     assert result.json['api_response']['keep_alive'] is True
     assert len(result.json['api_response']['new_heuristics']) == 0
+    assert result.json['api_response']['service_config'] == config_block
 
 
 def test_register_bad_service(client, storage):
@@ -59,6 +62,8 @@ def test_register_bad_service(client, storage):
 
 
 def test_register_new_service(client, storage):
+    config_block = 'A CONFIG OBJECT FOR SURE'
+    storage.get_service_with_delta.return_value = config_block
     storage.service.get_if_exists.return_value = False
     storage.service_delta.get_if_exists.return_value = False
 
@@ -75,10 +80,12 @@ def test_register_new_service(client, storage):
 
     assert result.json['api_response']['keep_alive'] is False
     assert len(result.json['api_response']['new_heuristics']) == 0
-
+    assert result.json['api_response']['service_config'] == config_block
 
 
 def test_register_new_service_version(client, storage):
+    config_block = 'A CONFIG OBJECT FOR SURE'
+    storage.get_service_with_delta.return_value = config_block
     storage.service_delta.get_if_exists.return_value = False
 
     service = random_minimal_obj(Service)
@@ -94,9 +101,12 @@ def test_register_new_service_version(client, storage):
 
     assert result.json['api_response']['keep_alive'] is True
     assert len(result.json['api_response']['new_heuristics']) == 0
+    assert result.json['api_response']['service_config'] == config_block
 
 
 def test_register_new_heuristics(client, storage):
+    config_block = 'A CONFIG OBJECT FOR SURE'
+    storage.get_service_with_delta.return_value = config_block
     storage.heuristic.get_if_exists.return_value = None
 
     service = random_minimal_obj(Service)
@@ -113,9 +123,13 @@ def test_register_new_heuristics(client, storage):
     assert result.json['api_response']['keep_alive'] is True
     assert len(result.json['api_response']['new_heuristics']) == 1
     assert service['heuristics'][0]['heur_id'] in result.json['api_response']['new_heuristics'][0]
+    assert result.json['api_response']['service_config'] == config_block
 
 
 def test_register_existing_heuristics(client, storage):
+    config_block = 'A CONFIG OBJECT FOR SURE'
+    storage.get_service_with_delta.return_value = config_block
+
     service = random_minimal_obj(Service)
     service = service.as_primitives()
     service['heuristics'] = [random_minimal_obj(Heuristic).as_primitives()]
@@ -129,6 +143,7 @@ def test_register_existing_heuristics(client, storage):
 
     assert result.json['api_response']['keep_alive'] is True
     assert len(result.json['api_response']['new_heuristics']) == 0
+    assert result.json['api_response']['service_config'] == config_block
 
 
 def test_register_bad_heuristics(client, storage):
