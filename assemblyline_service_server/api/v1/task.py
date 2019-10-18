@@ -50,6 +50,7 @@ def get_task(client_info):
 
     """
     service_name = client_info['service_name']
+    service_version = client_info['service_version']
     client_id = client_info['client_id']
     timeout = int(request.headers.get('timeout', 30))
     # Add a little extra to the status timeout so that the service has a chance to retry before we start to
@@ -58,7 +59,7 @@ def get_task(client_info):
 
     cache_miss = False
 
-    task = dispatch_client.request_work(client_id, service_name, timeout=timeout)
+    task = dispatch_client.request_work(client_id, service_name, service_version, timeout=timeout)
 
     if not task:
         # No task found in service queue
@@ -68,7 +69,7 @@ def get_task(client_info):
         conf_key = generate_conf_key(client_info['service_tool_version'], task.service_config)
         result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
                                            service_name=service_name,
-                                           service_version=client_info['service_version'],
+                                           service_version=service_version,
                                            conf_key=conf_key)
         service_data = dispatch_client.schedule_builder.services[service_name]
 
