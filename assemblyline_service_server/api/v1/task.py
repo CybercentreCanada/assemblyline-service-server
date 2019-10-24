@@ -3,6 +3,8 @@ import json
 import time
 from typing import cast, Dict, Any, Optional
 
+from assemblyline.odm import construct_safe
+from assemblyline.odm.models.tagging import Tagging
 from flask import request
 
 from assemblyline.common import forge
@@ -162,6 +164,12 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
 
     # Pop the temporary submission data
     temp_submission_data = result.pop('temp_submission_data', None)
+
+    # Process the tag values
+    for section in result['result']['sections']:
+        section['tags'], dropped = construct_safe(Tagging, section.get('tags', {}))
+        if dropped:
+            LOGGER.warning(f"Invalid tag data from {client_info['service_name']}: {dropped}")
 
     result = Result(result)
 
