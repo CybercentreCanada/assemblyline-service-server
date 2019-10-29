@@ -9,7 +9,7 @@ from assemblyline.common.isotime import now_as_iso
 from assemblyline.filestore import FileStoreException
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, stream_file_response, \
     api_login
-from assemblyline_service_server.config import LOGGER, STORAGE
+from assemblyline_service_server.config import LOGGER, STORAGE, config
 
 SUB_API = 'file'
 file_api = make_subapi_blueprint(SUB_API, api_version=1)
@@ -104,8 +104,12 @@ def upload_files(client_info):
 
         # Validate SHA256 of the uploaded file
         if sha256 == file_info['sha256']:
+            file_info['archive_ts'] = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
             file_info['classification'] = classification
-            file_info['expiry_ts'] = now_as_iso(ttl * 24 * 60 * 60)
+            if ttl:
+                file_info['expiry_ts'] = now_as_iso(ttl * 24 * 60 * 60)
+            else:
+                file_info['expiry_ts'] = None
 
             # Update the datastore with the uploaded file
             STORAGE.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'],
