@@ -3,27 +3,27 @@ import json
 import time
 from typing import cast, Dict, Any, Optional
 
-from assemblyline.odm import construct_safe
-from assemblyline.odm.models.tagging import Tagging
+from assemblyline.common.isotime import now_as_iso
 from flask import request
 
 from assemblyline.common import forge
 from assemblyline.common.attack_map import attack_map
 from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
 from assemblyline.common.forge import CachedObject
+from assemblyline.odm import construct_safe
 from assemblyline.odm.messages.service_heartbeat import Metrics
 from assemblyline.odm.messages.task import Task as ServiceTask
 from assemblyline.odm.models.error import Error
 from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.result import Result
+from assemblyline.odm.models.tagging import Tagging
 from assemblyline.remote.datatypes.exporting_counter import export_metrics_once
 from assemblyline.remote.datatypes.hash import ExpiringHash
 from assemblyline_core.dispatching.client import DispatchClient
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
-from assemblyline_service_server.config import LOGGER, STORAGE
+from assemblyline_service_server.config import LOGGER, STORAGE, config
 from assemblyline_service_server.helper.heuristics import get_heuristics
 
-config = forge.get_config()
 status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=60*30)
 dispatch_client = DispatchClient(STORAGE)
 heuristics = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
@@ -162,6 +162,12 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     # Update the total score of the result
     result['result']['score'] = total_score
 
+    # Add timestamps for creation, archive and expiry
+    result['created'] = now_as_iso()
+    result['archive_ts'] = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
+    if task.ttl:
+        result['expiry_ts'] = now_as_iso(task.ttl * 24 * 60 * 60)
+
     # Pop the temporary submission data
     temp_submission_data = result.pop('temp_submission_data', None)
 
@@ -202,6 +208,12 @@ def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], 
 
     LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
                 f"failed to complete task (SID: {task.sid}){f' in {exec_time}ms' if exec_time else ''}")
+
+    # Add timestamps for creation, archive and expiry
+    error['created'] = now_as_iso()
+    error['archive_ts'] = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
+    if task.ttl:
+        error['expiry_ts'] = now_as_iso(task.ttl * 24 * 60 * 60)
 
     error = Error(error)
 
