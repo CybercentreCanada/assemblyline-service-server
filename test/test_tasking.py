@@ -129,9 +129,9 @@ def test_finish_minimal(client, dispatch_client):
     assert resp.status_code == 200
     assert dispatch_client.service_finished.call_count == 1
     assert dispatch_client.service_finished.call_args[0][0] == task.sid
-    result.archive_ts = dispatch_client.service_failed.call_args[0][2].archive_ts
-    result.expiry_ts = dispatch_client.service_failed.call_args[0][2].expiry_ts
-    result.created = dispatch_client.service_failed.call_args[0][2].created
+    result.archive_ts = dispatch_client.service_finished.call_args[0][2].archive_ts
+    result.expiry_ts = dispatch_client.service_finished.call_args[0][2].expiry_ts
+    result.created = dispatch_client.service_finished.call_args[0][2].created
     assert dispatch_client.service_finished.call_args[0][2] == result
 
 
