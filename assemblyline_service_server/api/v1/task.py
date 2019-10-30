@@ -54,7 +54,7 @@ def get_task(client_info):
     service_name = client_info['service_name']
     service_version = client_info['service_version']
     client_id = client_info['client_id']
-    timeout = int(request.headers.get('timeout', 30))
+    timeout = int(float(request.headers.get('timeout', 30)))
     # Add a little extra to the status timeout so that the service has a chance to retry before we start to
     # suspect it of slacking off
     status_table.set(client_id, (service_name, ServiceStatus.Idle, time.time() + timeout + 5))
