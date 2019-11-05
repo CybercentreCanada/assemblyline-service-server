@@ -73,7 +73,7 @@ def get_task(client_info):
                                            service_name=service_name,
                                            service_version=service_version,
                                            conf_key=conf_key)
-        service_data = dispatch_client.schedule_builder.services[service_name]
+        service_data = dispatch_client.service_data[service_name]
 
         # If we are allowed, try to see if the result has been cached
         if not task.ignore_cache and not service_data.disable_cache:
