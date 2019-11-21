@@ -182,7 +182,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     with forge.get_filestore() as f_transport:
         missing_files = []
         for file in (result.response.extracted + result.response.supplementary):
-            if not f_transport.exists(file.sha256):
+            if STORAGE.file.get_if_exists(file.sha256) is None or not f_transport.exists(file.sha256):
                 missing_files.append(file.sha256)
         if missing_files:
             return missing_files
