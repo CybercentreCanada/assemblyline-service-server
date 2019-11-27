@@ -29,7 +29,9 @@ class api_login:
             if AUTH_KEY != apikey:
                 client_id = request.headers.get('container_id', 'Unknown Client')
                 header_dump = '; '.join(f'{k}={v}' for k, v in request.headers.items())
-                LOGGER.warning(f'Client [{client_id}] provided wrong api key [{apikey}] {header_dump}')
+                wsgi_dump = '; '.join(f'{k}={v}' for k, v in request.environ.items())
+                LOGGER.warning(f'Client [{client_id}] provided wrong api key [{apikey}] '
+                               f'headers: {header_dump}; wsgi: {wsgi_dump}')
                 return make_api_response("", "Unauthorized access denied", 401)
 
             client_info = dict(
