@@ -33,6 +33,20 @@ def storage():
         yield ds
 
 
+def test_register_service_auth_fail(client, storage):
+    config_block = 'A CONFIG OBJECT FOR SURE'
+    storage.get_service_with_delta.return_value = config_block
+    service = random_minimal_obj(Service)
+
+    _headers = dict(headers)
+    _headers['X-APIKEY'] = '10'
+    _headers['Service-Name'] = service.name
+    _headers['Service-Version'] = service.version
+
+    result = client.post("/api/v1/service/register/", headers=_headers, json=service.as_primitives())
+    assert result.status_code == 401
+
+
 def test_register_existing_service(client, storage):
     config_block = 'A CONFIG OBJECT FOR SURE'
     storage.get_service_with_delta.return_value = config_block
