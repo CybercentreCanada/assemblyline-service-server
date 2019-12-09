@@ -3,6 +3,8 @@ import json
 import time
 from typing import cast, Dict, Any, Optional
 
+import baseconv
+
 from assemblyline.common.isotime import now_as_iso
 from flask import request
 
@@ -10,6 +12,7 @@ from assemblyline.common import forge
 from assemblyline.common.attack_map import attack_map
 from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
 from assemblyline.common.forge import CachedObject
+from assemblyline.common.uid import get_random_id
 from assemblyline.odm import construct_safe
 from assemblyline.odm.messages.service_heartbeat import Metrics
 from assemblyline.odm.messages.task import Task as ServiceTask
@@ -68,7 +71,7 @@ def get_task(client_info):
         return make_api_response(dict(task=False))
 
     try:
-        conf_key = generate_conf_key(client_info['service_tool_version'], task.service_config)
+        conf_key = generate_conf_key(client_info['service_tool_version'], task)
         result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
                                            service_name=service_name,
                                            service_version=service_version,
@@ -187,7 +190,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
         if missing_files:
             return missing_files
 
-    conf_key = generate_conf_key(result.response.service_tool_version, task.service_config)
+    conf_key = generate_conf_key(result.response.service_tool_version, task)
     result_key = result.build_key(conf_key)
     dispatch_client.service_finished(task.sid, result_key, result, temp_submission_data)
 
@@ -217,7 +220,7 @@ def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], 
 
     error = Error(error)
 
-    conf_key = generate_conf_key(error.response.service_tool_version, task.service_config)
+    conf_key = generate_conf_key(error.response.service_tool_version, task)
     error_key = error.build_key(conf_key)
     dispatch_client.service_failed(task.sid, error_key, error)
 
@@ -228,12 +231,18 @@ def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], 
         export_metrics_once(service_name, Metrics, dict(fail_nonrecoverable=1), host=client_id, counter_type='service')
 
 
-def generate_conf_key(service_tool_version: Optional[str], service_config: Dict[str, Any]):
-    if service_tool_version is not None:
-        service_tool_version_hash = hashlib.md5((service_tool_version.encode('utf-8'))).hexdigest()
-    else:
-        service_tool_version_hash = ''
+def generate_conf_key(service_tool_version: Optional[str], task):
+    service_config = json.dumps(sorted(task.service_config.items()))
+    submission_params = {
+        "deep_scan": task.deep_scan,
+        "max_files": task.max_files
+    }
+    submission_params_str = json.dumps(sorted(submission_params.items()))
 
-    task_config_hash = hashlib.md5((json.dumps(sorted(service_config)).encode('utf-8'))).hexdigest()
-    conf_key = hashlib.md5((str(service_tool_version_hash + task_config_hash).encode('utf-8'))).hexdigest()
-    return conf_key
+    ignore_salt = ""
+    if task.ignore_cache:
+        ignore_salt = get_random_id()
+
+    total_str = f"{service_tool_version}_{service_config}_{submission_params_str}_{ignore_salt}".encode('utf-8')
+    partial_md5 = hashlib.md5((str(total_str).encode('utf-8'))).hexdigest()[:16]
+    return baseconv.base62.encode(int(partial_md5, 16))
