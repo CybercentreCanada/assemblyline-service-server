@@ -154,15 +154,20 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
                                        f"service specified an invalid attack_id in its service result, ignoring it")
                         # Assign an attack_id from the datastore if it exists
                         if heuristics[heur_id].attack_id in attack_map:
-                            section['heuristic']['attack_id'] = heuristics[heur_id].attack_id
-                            section['heuristic']['attack_pattern'] = attack_map[heuristics[heur_id].attack_id]['name']
+                            attack_id = heuristics[heur_id].attack_id
+                            section['heuristic']['attack_id'] = attack_id
+                            section['heuristic']['attack_pattern'] = attack_map[attack_id]['name']
+                            section['heuristic']['attack_categories'] = attack_map[attack_id]['categories']
                     else:
                         section['heuristic']['attack_pattern'] = attack_map[attack_id]['name']
+                        section['heuristic']['attack_categories'] = attack_map[attack_id]['categories']
 
                 elif heuristics[heur_id].attack_id in attack_map:
                     # Assign an attack_id from the datastore if it exists
-                    section['heuristic']['attack_id'] = heuristics[heur_id].attack_id
-                    section['heuristic']['attack_pattern'] = attack_map[heuristics[heur_id].attack_id]['name']
+                    attack_id = heuristics[heur_id].attack_id
+                    section['heuristic']['attack_id'] = attack_id
+                    section['heuristic']['attack_pattern'] = attack_map[attack_id]['name']
+                    section['heuristic']['attack_categories'] = attack_map[attack_id]['categories']
                 else:
                     section['heuristic']['attack_id'] = None
 
