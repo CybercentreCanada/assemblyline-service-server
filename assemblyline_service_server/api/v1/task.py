@@ -144,6 +144,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
             if heuristics.get(heur_id):
                 # Assign a score for the heuristic from the datastore
                 section['heuristic']['score'] = heuristics[heur_id].score
+                section['heuristic']['name'] = heuristics[heur_id].name
                 total_score += heuristics[heur_id].score
 
                 if attack_id:
@@ -152,10 +153,18 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
                         LOGGER.warning(f"{client_info['client_id']} - {client_info['service_name']} "
                                        f"service specified an invalid attack_id in its service result, ignoring it")
                         # Assign an attack_id from the datastore if it exists
-                        section['heuristic']['attack_id'] = heuristics[heur_id].attack_id or None
-                else:
+                        if heuristics[heur_id].attack_id in attack_map:
+                            section['heuristic']['attack_id'] = heuristics[heur_id].attack_id
+                            section['heuristic']['attack_pattern'] = attack_map[heuristics[heur_id].attack_id]['name']
+                    else:
+                        section['heuristic']['attack_pattern'] = attack_map[attack_id]['name']
+
+                elif heuristics[heur_id].attack_id in attack_map:
                     # Assign an attack_id from the datastore if it exists
-                    section['heuristic']['attack_id'] = heuristics[heur_id].attack_id or None
+                    section['heuristic']['attack_id'] = heuristics[heur_id].attack_id
+                    section['heuristic']['attack_pattern'] = attack_map[heuristics[heur_id].attack_id]['name']
+                else:
+                    section['heuristic']['attack_id'] = None
 
     # Update the total score of the result
     result['result']['score'] = total_score
