@@ -150,7 +150,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
                 if attack_id:
                     # Verify that the attack_id is valid
                     if attack_id not in attack_map:
-                        LOGGER.warning(f"{client_info['client_id']} - {client_info['service_name']} "
+                        LOGGER.warning(f"[{task.sid}] {client_info['client_id']} - {client_info['service_name']} "
                                        f"service specified an invalid attack_id in its service result, ignoring it")
                         # Assign an attack_id from the datastore if it exists
                         if heuristics[heur_id].attack_id in attack_map:
@@ -187,7 +187,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     for section in result['result']['sections']:
         section['tags'], dropped = construct_safe(Tagging, section.get('tags', {}))
         if dropped:
-            LOGGER.warning(f"Invalid tag data from {client_info['service_name']}: {dropped}")
+            LOGGER.warning(f"[{task.sid}] Invalid tag data from {client_info['service_name']}: {dropped}")
 
     result = Result(result)
 
@@ -209,16 +209,16 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     else:
         export_metrics_once(service_name, Metrics, dict(not_scored=1), host=client_id, counter_type='service')
 
-    LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
-                f"successfully completed task (SID: {task.sid}){f' in {exec_time}ms' if exec_time else ''}")
+    LOGGER.info(f"[{task.sid}] {client_info['client_id']} - {client_info['service_name']} "
+                f"successfully completed task {f' in {exec_time}ms' if exec_time else ''}")
 
 
 def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], client_info: Dict[str, str]) -> None:
     service_name = client_info['service_name']
     client_id = client_info['client_id']
 
-    LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
-                f"failed to complete task (SID: {task.sid}){f' in {exec_time}ms' if exec_time else ''}")
+    LOGGER.info(f"[{task.sid}] {client_info['client_id']} - {client_info['service_name']} "
+                f"failed to complete task {f' in {exec_time}ms' if exec_time else ''}")
 
     # Add timestamps for creation, archive and expiry
     error['created'] = now_as_iso()
