@@ -98,6 +98,7 @@ def test_task_dispatch(client, dispatch_client, storage):
     task = random_minimal_obj(Task)
     task.ignore_cache = False
     storage.result.get_if_exists.return_value = None
+    storage.emptyresult.get_if_exists.return_value = None
     dispatch_client.request_work.return_value = task
     dispatch_client.service_data[service_name].timeout = 100
     dispatch_client.service_data[service_name].disable_cache = False
