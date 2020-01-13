@@ -70,6 +70,7 @@ def get_task(client_info):
                                            service_name=service_name,
                                            service_version=service_version,
                                            service_tool_version=client_info['service_tool_version'],
+                                           is_empty=False,
                                            task=task)
         service_data = dispatch_client.service_data[service_name]
 
@@ -77,6 +78,12 @@ def get_task(client_info):
         if not task.ignore_cache and not service_data.disable_cache:
             result = STORAGE.result.get_if_exists(result_key)
             if result:
+                dispatch_client.service_finished(task.sid, result_key, result)
+                return make_api_response(dict(task=False))
+
+            result = STORAGE.emptyresult.get_if_exists(f"{result_key}.e")
+            if result:
+                result = STORAGE.create_empty_result_from_key(result_key)
                 dispatch_client.service_finished(task.sid, result_key, result)
                 return make_api_response(dict(task=False))
 
