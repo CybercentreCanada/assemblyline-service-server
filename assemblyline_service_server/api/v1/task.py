@@ -84,7 +84,7 @@ def get_task(client_info):
             result = STORAGE.emptyresult.get_if_exists(f"{result_key}.e")
             if result:
                 result = STORAGE.create_empty_result_from_key(result_key)
-                dispatch_client.service_finished(task.sid, result_key, result)
+                dispatch_client.service_finished(task.sid, f"{result_key}.e", result)
                 return make_api_response(dict(task=False))
 
             # No luck with the cache, lets dispatch the task to a client
