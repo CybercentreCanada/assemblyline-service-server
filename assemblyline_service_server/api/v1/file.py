@@ -96,6 +96,11 @@ def upload_files(client_info):
         if request.content_type.startswith('multipart'):
             file = request.files['file']
             file.save(temp_file.name)
+        elif request.stream.is_exhausted:
+            if request.stream.limit == len(request.data):
+                temp_file.write(request.data)
+            else:
+                raise ValueError("Cannot find the uploaded file...")
         else:
             shutil.copyfileobj(request.stream, temp_file)
 
