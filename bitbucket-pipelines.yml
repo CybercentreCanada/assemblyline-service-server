@@ -22,11 +22,11 @@ pipelines:
             - cd ~/alv4 && pwd
             # Try to checkout the matching branch, if the command fails, don't care.
             - git checkout -b $BITBUCKET_BRANCH -t origin/$BITBUCKET_BRANCH || true
-            - pip install -e .
+            - pip install --no-cache-dir -e .
             # Install and test al service server
             - cd $BITBUCKET_CLONE_DIR && pwd
-            - pip install -r test/requirements.txt
-            - pip install -e .
+            - pip install --no-cache-dir -r test/requirements.txt
+            - pip install --no-cache-dir -e .
             - python -m assemblyline_service_server.app &
             - pytest -rsx -vv
           services: &services
@@ -45,7 +45,7 @@ pipelines:
           name: Build Package
           image: python:3.8
           script:
-            - pip install wheel
+            - pip install --no-cache-dir wheel
             - python setup.py bdist_wheel
             - ls dist/
           artifacts:
@@ -58,11 +58,11 @@ pipelines:
               - rm -rf service setup.py  # Make sure we are running on the package from the prior build
               - apt update
               - apt install -y build-essential libffi-dev libfuzzy-dev python3-dev
-              - pip install -f dist assemblyline-service-server
+              - pip install --no-cache-dir -f dist assemblyline-service-server
               - mkdir -p /etc/assemblyline/
               - mkdir -p /var/cache/assemblyline/
               - cp test/bitbucket/config.yml /etc/assemblyline
-              - pip install -r test/requirements.txt
+              - pip install --no-cache-dir -r test/requirements.txt
               - python -m assemblyline_service_server.app &
               - pytest -rsx -vv
             services: *services
@@ -77,7 +77,7 @@ pipelines:
           image: python:3.8
           deployment: test_pypi
           script:
-            - pip install twine
+            - pip install --no-cache-dir twine
             - ls dist
             - twine upload --skip-existing --repository-url $TEST_REPOSITORY_URL dist/*
       - step:
@@ -85,7 +85,7 @@ pipelines:
           image: python:3.8
           deployment: pypi
           script:
-            - pip install twine
+            - pip install --no-cache-dir twine
             - ls dist
             - twine upload --skip-existing dist/*
       - step:
@@ -95,7 +95,7 @@ pipelines:
           deployment: container
           script:
             - export TAG=${BITBUCKET_TAG#v}
-            - until pip3 install assemblyline-service-server== 2>&1 | grep -q $TAG; do sleep 2; done
+            - until pip install --no-cache-dir assemblyline-service-server== 2>&1 | grep -q $TAG; do sleep 2; done
             - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_PASSWORD
             - docker build --build-arg version=$TAG -t cccs/assemblyline-service-server:$TAG -t cccs/assemblyline-service-server:latest docker
             - docker push cccs/assemblyline-service-server
