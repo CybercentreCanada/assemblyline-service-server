@@ -14,8 +14,9 @@ setup(
     name="assemblyline-service-server",
     version=package_version,
     description="Assemblyline (v4) automated malware analysis framework - Service components.",
-    long_description="This package provides the service components (APIs and SocketIO Server) for the Assemblyline v4 malware analysis framework.",
-    url="https://bitbucket.org/cse-assemblyline/alv4_service_server/",
+    long_description="This package provides the service components (APIs and SocketIO Server) "
+                     "for the Assemblyline v4 malware analysis framework.",
+    url="https://github.com/CybercentreCanada/assemblyline-service-server/",
     author="CCCS Assemblyline development team",
     author_email="assemblyline@cyber.gc.ca",
     license="MIT",
