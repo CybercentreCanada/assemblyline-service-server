@@ -1,5 +1,0 @@
-requests_toolbelt
-flask
-flask-socketio
-gevent
-gevent-websocket

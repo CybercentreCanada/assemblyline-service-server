@@ -27,5 +27,5 @@ class ServiceClient(odm.Model):
     service_version: str = odm.Keyword()                     # Version of the service running on the client
     service_tool_version: Opt[str] = odm.Optional(odm.Keyword())  # Tool version of the service running on the client
     service_timeout: int = odm.Integer()                          # Timeout of the service running on the client
-    current: Opt[Current] = odm.Optional(odm.Compound(Current))   # Info about the current status and task assigned to the client
+    current: Opt[Current] = odm.Optional(odm.Compound(Current))   # Info about the current status and task assigned
     tasking_counters = odm.Optional(odm.Any())                    # MetricsFactory counters for the service

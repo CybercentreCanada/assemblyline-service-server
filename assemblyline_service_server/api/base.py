@@ -20,6 +20,7 @@ def make_subapi_blueprint(name, api_version=1):
 
 ####################################
 # API Helper func and decorators
+# noinspection PyPep8Naming,PyClassHasNoInit
 class api_login:
     def __call__(self, func):
         @functools.wraps(func)
