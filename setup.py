@@ -42,6 +42,10 @@ setup(
         'gevent',
         'gevent-websocket',
     ],
-    package_data={
-    }
+    extras_require={
+        'test': [
+            'pytest'
+        ]
+    },
+    package_data={}
 )
