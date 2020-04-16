@@ -11,13 +11,17 @@ elif 'BUILD_SOURCEBRANCH' in os.environ:
     full_tag_prefix = 'refs/tags/v'
     package_version = os.environ['BUILD_SOURCEBRANCH'][len(full_tag_prefix):]
 
+# read the contents of your README file
+this_directory = os.path.abspath(os.path.dirname(__file__))
+with open(os.path.join(this_directory, 'README.md'), encoding='utf-8') as f:
+    long_description = f.read()
 
 setup(
     name="assemblyline-service-server",
     version=package_version,
-    description="Assemblyline (v4) automated malware analysis framework - Service components.",
-    long_description="This package provides the service components (APIs and SocketIO Server) "
-                     "for the Assemblyline v4 malware analysis framework.",
+    description="Assemblyline 4 - Service Server",
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     url="https://github.com/CybercentreCanada/assemblyline-service-server/",
     author="CCCS Assemblyline development team",
     author_email="assemblyline@cyber.gc.ca",
