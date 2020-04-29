@@ -49,5 +49,5 @@ setup(
             'pytest'
         ]
     },
-    package_data={'': 'VERSION'}
+    package_data={'': ['VERSION']}
 )
