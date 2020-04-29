@@ -139,6 +139,42 @@ def task_finished(client_info):
         return make_api_response("", e, 400)
 
 
+class InvalidHeuristicException(Exception):
+    pass
+
+
+class Heuristic(object):
+    def __init__(self, heur_id, attack_ids, signatures):
+        definition = heuristics.get(heur_id)
+        if not definition:
+            raise InvalidHeuristicException(f"Heuristic with ID '{heur_id}' does not exist, skipping...")
+
+        self.heur_id = heur_id
+        self.attack_ids = []
+        self.score = 0
+        self.name = definition.name
+        self.classification = definition.classification
+
+        attack_ids = attack_ids or []
+
+        for a_id in attack_ids:
+            if a_id in set(attack_map.keys()):
+                self.attack_ids.append(a_id)
+            else:
+                LOGGER.warning(f"Invalid attack_id '{a_id}' for heuristic '{heur_id}'. Ignoring it.")
+
+        self.signatures = signatures or {}
+        for sig_name, freq in signatures.items():
+            if sig_name in definition.signature_score_map:
+                self.score += definition.signature_score_map[sig_name] * freq
+            else:
+                self.score += definition.score * freq
+
+        self.score = max(definition.score, self.score)
+        if definition.max_score:
+            self.score = min(self.score, definition.max_score)
+
+
 def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], client_info: Dict[str, str]):
     service_name = client_info['service_name']
     client_id = client_info['client_id']
@@ -148,38 +184,41 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     for section in result['result']['sections']:
         if section.get('heuristic'):
             heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
-            section['heuristic']['heur_id'] = heur_id
-            attack_id = section['heuristic'].get('attack_id')
+            attack_ids = section['heuristic'].pop('attack_ids', [])
+            signatures = section['heuristic'].pop('signatures', [])
 
-            if heuristics.get(heur_id):
+            try:
+                heuristic = Heuristic(heur_id, attack_ids, signatures)
+            except InvalidHeuristicException as e:
+                section['heuristic'] = None
+                LOGGER.warning(str(e))
+                continue
+
+            if heuristic:
                 # Assign a score for the heuristic from the datastore
-                section['heuristic']['score'] = heuristics[heur_id].score
-                section['heuristic']['name'] = heuristics[heur_id].name
-                total_score += heuristics[heur_id].score
+                section['heuristic'] = dict(
+                    heur_id=heur_id,
+                    score=heuristic.score,
+                    name=heuristic.name,
+                    attack=[],
+                    signature=[]
+                )
+                total_score += heuristic.score
 
-                if attack_id:
-                    # Verify that the attack_id is valid
-                    if attack_id not in attack_map:
-                        LOGGER.warning(f"[{task.sid}] {client_info['client_id']} - {client_info['service_name']} "
-                                       f"service specified an invalid attack_id in its service result, ignoring it")
-                        # Assign an attack_id from the datastore if it exists
-                        if heuristics[heur_id].attack_id in attack_map:
-                            attack_id = heuristics[heur_id].attack_id
-                            section['heuristic']['attack_id'] = attack_id
-                            section['heuristic']['attack_pattern'] = attack_map[attack_id]['name']
-                            section['heuristic']['attack_categories'] = attack_map[attack_id]['categories']
-                    else:
-                        section['heuristic']['attack_pattern'] = attack_map[attack_id]['name']
-                        section['heuristic']['attack_categories'] = attack_map[attack_id]['categories']
+                for attack_id in heuristic.attack_ids:
+                    attack_item = dict(
+                        attack_id=attack_id,
+                        pattern=attack_map[attack_id]['name'],
+                        categories=attack_map[attack_id]['categories']
+                    )
+                    section['heuristic']['attack'].append(attack_item)
 
-                elif heuristics[heur_id].attack_id in attack_map:
-                    # Assign an attack_id from the datastore if it exists
-                    attack_id = heuristics[heur_id].attack_id
-                    section['heuristic']['attack_id'] = attack_id
-                    section['heuristic']['attack_pattern'] = attack_map[attack_id]['name']
-                    section['heuristic']['attack_categories'] = attack_map[attack_id]['categories']
-                else:
-                    section['heuristic']['attack_id'] = None
+                for sig_name, freq in heuristic.signatures.items():
+                    signature_item = dict(
+                        name=sig_name,
+                        frequency=freq
+                    )
+                    section['heuristic']['signature'].append(signature_item)
 
     # Update the total score of the result
     result['result']['score'] = total_score
