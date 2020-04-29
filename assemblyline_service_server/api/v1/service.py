@@ -1,4 +1,3 @@
-import copy
 
 from flask import request
 
@@ -70,8 +69,12 @@ def register_service(client_info):
                                      f"invalid heuristic ({heuristic_id}) ignored: {str(e)}")
                     raise ValueError("Error parsing heuristics")
 
-            res = STORAGE.heuristic.bulk(plan)
-            # TODO: parse res
+            for item in STORAGE.heuristic.bulk(plan)['items']:
+                if item['update']['result'] != "noop":
+                    new_heuristics.append(item['update']['_id'])
+                    LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
+                                f"heuristic {item['update']['_id']}: {item['update']['result'].upper()}")
+
             STORAGE.heuristic.commit()
 
         service_config = STORAGE.get_service_with_delta(service.name, as_obj=False)
