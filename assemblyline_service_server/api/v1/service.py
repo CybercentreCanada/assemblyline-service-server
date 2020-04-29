@@ -61,6 +61,11 @@ def register_service(client_info):
                     # Append service name to heuristic ID
                     heuristic['heur_id'] = f"{service.name.upper()}.{str(heuristic['heur_id'])}"
 
+                    # Attack_id field is now a list, make it a list if we receive otherwise
+                    attack_id = heuristic.get('attack_id', None)
+                    if isinstance(attack_id, str):
+                        heuristic['attack_id'] = [attack_id]
+
                     heuristic = Heuristic(heuristic)
                     heuristic_id = heuristic.heur_id
                     plan.add_upsert_operation(heuristic_id, heuristic)
