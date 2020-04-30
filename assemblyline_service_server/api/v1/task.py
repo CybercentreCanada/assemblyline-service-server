@@ -2,12 +2,12 @@ import time
 from typing import cast, Dict, Any
 
 from assemblyline.common.dict_utils import flatten, unflatten
+from assemblyline.common.heuristics import service_heuristic_to_result_heuristic, InvalidHeuristicException
 
 from assemblyline.common.isotime import now_as_iso
 from flask import request
 
 from assemblyline.common import forge
-from assemblyline.common.attack_map import attack_map
 from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
 from assemblyline.common.forge import CachedObject
 from assemblyline.odm import construct_safe
@@ -149,37 +149,11 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
         if section.get('heuristic'):
             heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
             section['heuristic']['heur_id'] = heur_id
-            attack_id = section['heuristic'].get('attack_id')
-
-            if heuristics.get(heur_id):
-                # Assign a score for the heuristic from the datastore
-                section['heuristic']['score'] = heuristics[heur_id].score
-                section['heuristic']['name'] = heuristics[heur_id].name
-                total_score += heuristics[heur_id].score
-
-                if attack_id:
-                    # Verify that the attack_id is valid
-                    if attack_id not in attack_map:
-                        LOGGER.warning(f"[{task.sid}] {client_info['client_id']} - {client_info['service_name']} "
-                                       f"service specified an invalid attack_id in its service result, ignoring it")
-                        # Assign an attack_id from the datastore if it exists
-                        if heuristics[heur_id].attack_id in attack_map:
-                            attack_id = heuristics[heur_id].attack_id
-                            section['heuristic']['attack_id'] = attack_id
-                            section['heuristic']['attack_pattern'] = attack_map[attack_id]['name']
-                            section['heuristic']['attack_categories'] = attack_map[attack_id]['categories']
-                    else:
-                        section['heuristic']['attack_pattern'] = attack_map[attack_id]['name']
-                        section['heuristic']['attack_categories'] = attack_map[attack_id]['categories']
-
-                elif heuristics[heur_id].attack_id in attack_map:
-                    # Assign an attack_id from the datastore if it exists
-                    attack_id = heuristics[heur_id].attack_id
-                    section['heuristic']['attack_id'] = attack_id
-                    section['heuristic']['attack_pattern'] = attack_map[attack_id]['name']
-                    section['heuristic']['attack_categories'] = attack_map[attack_id]['categories']
-                else:
-                    section['heuristic']['attack_id'] = None
+            try:
+                section['heuristic'] = service_heuristic_to_result_heuristic(section['heuristic'], heuristics)
+                total_score += section['heuristic']['score']
+            except InvalidHeuristicException:
+                section['heuristic'] = None
 
     # Update the total score of the result
     result['result']['score'] = total_score
