@@ -2,12 +2,12 @@ import time
 from typing import cast, Dict, Any
 
 from assemblyline.common.dict_utils import flatten, unflatten
+from assemblyline.common.heuristics import service_heuristic_to_result_heuristic, InvalidHeuristicException
 
 from assemblyline.common.isotime import now_as_iso
 from flask import request
 
 from assemblyline.common import forge
-from assemblyline.common.attack_map import attack_map
 from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
 from assemblyline.common.forge import CachedObject
 from assemblyline.odm import construct_safe
@@ -139,47 +139,6 @@ def task_finished(client_info):
         return make_api_response("", e, 400)
 
 
-class InvalidHeuristicException(Exception):
-    pass
-
-
-class Heuristic(object):
-    def __init__(self, heur_id, attack_ids, signatures, score_map, frequency):
-        # Validate heuristic
-        definition = heuristics.get(heur_id)
-        if not definition:
-            raise InvalidHeuristicException(f"Heuristic with ID '{heur_id}' does not exist, skipping...")
-
-        # Set defaults
-        self.heur_id = heur_id
-        self.attack_ids = []
-        self.score = 0
-        self.name = definition.name
-        self.classification = definition.classification
-
-        # Show only attack_ids that are valid
-        attack_ids = attack_ids or []
-        for a_id in attack_ids:
-            if a_id in set(attack_map.keys()):
-                self.attack_ids.append(a_id)
-            else:
-                LOGGER.warning(f"Invalid attack_id '{a_id}' for heuristic '{heur_id}'. Ignoring it.")
-
-        # Calculate the score for the signatures
-        self.signatures = signatures or {}
-        for sig_name, freq in signatures.items():
-            sig_score = definition.signature_score_map.get(sig_name, score_map.get(sig_name, definition.score))
-            self.score += sig_score * freq
-
-        # Calculate the score for the heuristic frequency
-        self.score += definition.score * frequency
-
-        # Check scoring boundaries
-        self.score = max(definition.score, self.score)
-        if definition.max_score:
-            self.score = min(self.score, definition.max_score)
-
-
 def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], client_info: Dict[str, str]):
     service_name = client_info['service_name']
     client_id = client_info['client_id']
@@ -189,44 +148,12 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     for section in result['result']['sections']:
         if section.get('heuristic'):
             heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
-            attack_ids = section['heuristic'].pop('attack_ids', [])
-            signatures = section['heuristic'].pop('signatures', [])
-            frequency = section['heuristic'].pop('frequency', 0)
-            score_map = section['heuristic'].pop('score_map', {})
-
+            section['heuristic']['heur_id'] = heur_id
             try:
-                # Validate the heuristic and recalculate its score
-                heuristic = Heuristic(heur_id, attack_ids, signatures, score_map, frequency)
-
-                # Assign the newly computed heuristic to the section
-                section['heuristic'] = dict(
-                    heur_id=heur_id,
-                    score=heuristic.score,
-                    name=heuristic.name,
-                    attack=[],
-                    signature=[]
-                )
-                total_score += heuristic.score
-
-                # Assign the multiple attack IDs to the heuristic
-                for attack_id in heuristic.attack_ids:
-                    attack_item = dict(
-                        attack_id=attack_id,
-                        pattern=attack_map[attack_id]['name'],
-                        categories=attack_map[attack_id]['categories']
-                    )
-                    section['heuristic']['attack'].append(attack_item)
-
-                # Assign the multiple signatures to the heuristic
-                for sig_name, freq in heuristic.signatures.items():
-                    signature_item = dict(
-                        name=sig_name,
-                        frequency=freq
-                    )
-                    section['heuristic']['signature'].append(signature_item)
-            except InvalidHeuristicException as e:
+                section['heuristic'] = service_heuristic_to_result_heuristic(section['heuristic'], heuristics)
+                total_score += section['heuristic']['score']
+            except InvalidHeuristicException:
                 section['heuristic'] = None
-                LOGGER.warning(str(e))
 
     # Update the total score of the result
     result['result']['score'] = total_score
