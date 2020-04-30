@@ -144,25 +144,28 @@ class InvalidHeuristicException(Exception):
 
 
 class Heuristic(object):
-    def __init__(self, heur_id, attack_ids, signatures):
+    def __init__(self, heur_id, attack_ids, signatures, frequency):
+        # Validate heuristic
         definition = heuristics.get(heur_id)
         if not definition:
             raise InvalidHeuristicException(f"Heuristic with ID '{heur_id}' does not exist, skipping...")
 
+        # Set defaults
         self.heur_id = heur_id
         self.attack_ids = []
         self.score = 0
         self.name = definition.name
         self.classification = definition.classification
 
+        # Show only attack_ids that are valid
         attack_ids = attack_ids or []
-
         for a_id in attack_ids:
             if a_id in set(attack_map.keys()):
                 self.attack_ids.append(a_id)
             else:
                 LOGGER.warning(f"Invalid attack_id '{a_id}' for heuristic '{heur_id}'. Ignoring it.")
 
+        # Calculate the score for the signatures
         self.signatures = signatures or {}
         for sig_name, freq in signatures.items():
             if sig_name in definition.signature_score_map:
@@ -170,6 +173,10 @@ class Heuristic(object):
             else:
                 self.score += definition.score * freq
 
+        # Calculate the score for the heuristic frequency
+        self.score += definition.score * frequency
+
+        # Check scoring boundaries
         self.score = max(definition.score, self.score)
         if definition.max_score:
             self.score = min(self.score, definition.max_score)
@@ -186,16 +193,13 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
             heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
             attack_ids = section['heuristic'].pop('attack_ids', [])
             signatures = section['heuristic'].pop('signatures', [])
+            frequency = section['heuristic'].pop('frequency', 0)
 
             try:
-                heuristic = Heuristic(heur_id, attack_ids, signatures)
-            except InvalidHeuristicException as e:
-                section['heuristic'] = None
-                LOGGER.warning(str(e))
-                continue
+                # Validate the heuristic and recalculate its score
+                heuristic = Heuristic(heur_id, attack_ids, signatures, frequency)
 
-            if heuristic:
-                # Assign a score for the heuristic from the datastore
+                # Assign the newly computed heuristic to the section
                 section['heuristic'] = dict(
                     heur_id=heur_id,
                     score=heuristic.score,
@@ -205,6 +209,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
                 )
                 total_score += heuristic.score
 
+                # Assign the multiple attack IDs to the heuristic
                 for attack_id in heuristic.attack_ids:
                     attack_item = dict(
                         attack_id=attack_id,
@@ -213,12 +218,16 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
                     )
                     section['heuristic']['attack'].append(attack_item)
 
+                # Assign the multiple signatures to the heuristic
                 for sig_name, freq in heuristic.signatures.items():
                     signature_item = dict(
                         name=sig_name,
                         frequency=freq
                     )
                     section['heuristic']['signature'].append(signature_item)
+            except InvalidHeuristicException as e:
+                section['heuristic'] = None
+                LOGGER.warning(str(e))
 
     # Update the total score of the result
     result['result']['score'] = total_score
