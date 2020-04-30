@@ -127,12 +127,15 @@ def test_register_new_heuristics(client, storage):
     service = service.as_primitives()
     service['heuristics'] = [random_minimal_obj(Heuristic).as_primitives()]
 
+    storage.heuristic.bulk.return_value = {"items": [{"update": {"result": "created",
+                                                                 "_id": service['heuristics'][0]['heur_id']}}]}
+
     headers['Service-Name'] = service['name']
     headers['Service-Version'] = service['version']
 
     result = client.post("/api/v1/service/register/", headers=headers, json=service)
     assert result.status_code == 200
-    assert storage.heuristic.save.call_count == 1
+    assert storage.heuristic.bulk.call_count == 1
 
     assert result.json['api_response']['keep_alive'] is True
     assert len(result.json['api_response']['new_heuristics']) == 1

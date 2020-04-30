@@ -137,6 +137,7 @@ def test_finish_minimal(client, dispatch_client):
 
 
 def test_finish_heuristic(client, dispatch_client, heuristics):
+    heuristics.get.return_value = None
     task = random_minimal_obj(Task)
 
     result: Result = random_model_obj(Result)
@@ -156,11 +157,12 @@ def test_finish_heuristic(client, dispatch_client, heuristics):
     assert dispatch_client.service_finished.call_args[0][0] == task.sid
     # Mock objects are always one on conversion to int, being changed to this, means that it looked at the
     # mocked out heuristics to load the score.
-    assert dispatch_client.service_finished.call_args[0][2].result.score == 1
+    assert dispatch_client.service_finished.call_args[0][2].result.score == 0
     assert heuristics.get.call_count == heuristics_count
 
 
 def test_finish_missing_file(client, dispatch_client, heuristics):
+    heuristics.get.return_value = None
     task = random_minimal_obj(Task)
     fs = forge.get_filestore()
 
