@@ -144,7 +144,7 @@ class InvalidHeuristicException(Exception):
 
 
 class Heuristic(object):
-    def __init__(self, heur_id, attack_ids, signatures, frequency):
+    def __init__(self, heur_id, attack_ids, signatures, score_map, frequency):
         # Validate heuristic
         definition = heuristics.get(heur_id)
         if not definition:
@@ -168,10 +168,8 @@ class Heuristic(object):
         # Calculate the score for the signatures
         self.signatures = signatures or {}
         for sig_name, freq in signatures.items():
-            if sig_name in definition.signature_score_map:
-                self.score += definition.signature_score_map[sig_name] * freq
-            else:
-                self.score += definition.score * freq
+            sig_score = definition.signature_score_map.get(sig_name, score_map.get(sig_name, definition.score))
+            self.score += sig_score * freq
 
         # Calculate the score for the heuristic frequency
         self.score += definition.score * frequency
@@ -194,10 +192,11 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
             attack_ids = section['heuristic'].pop('attack_ids', [])
             signatures = section['heuristic'].pop('signatures', [])
             frequency = section['heuristic'].pop('frequency', 0)
+            score_map = section['heuristic'].pop('score_map', {})
 
             try:
                 # Validate the heuristic and recalculate its score
-                heuristic = Heuristic(heur_id, attack_ids, signatures, frequency)
+                heuristic = Heuristic(heur_id, attack_ids, signatures, score_map, frequency)
 
                 # Assign the newly computed heuristic to the section
                 section['heuristic'] = dict(
