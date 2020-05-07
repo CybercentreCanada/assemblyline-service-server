@@ -122,8 +122,7 @@ def task_finished(client_info):
         task = ServiceTask(data['task'])
 
         if 'result' in data:  # Task created a result
-            result = data['result']
-            missing_files = handle_task_result(exec_time, task, result, client_info)
+            missing_files = handle_task_result(exec_time, task, data['result'], client_info, data['freshen'])
             if missing_files:
                 return make_api_response(dict(success=False, missing_files=missing_files))
             return make_api_response(dict(success=True))
@@ -139,7 +138,8 @@ def task_finished(client_info):
         return make_api_response("", e, 400)
 
 
-def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], client_info: Dict[str, str]):
+def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], client_info: Dict[str, str],
+                       freshen: bool):
     service_name = client_info['service_name']
     client_id = client_info['client_id']
 
@@ -182,8 +182,16 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     with forge.get_filestore() as f_transport:
         missing_files = []
         for file in (result.response.extracted + result.response.supplementary):
-            if STORAGE.file.get_if_exists(file.sha256) is None or not f_transport.exists(file.sha256):
+            cur_file_info = STORAGE.file.get_if_exists(file.sha256, as_obj=False)
+            if cur_file_info is None or not f_transport.exists(file.sha256):
                 missing_files.append(file.sha256)
+            elif cur_file_info is not None and freshen:
+                cur_file_info['archive_ts'] = result.archive_ts
+                if task.ttl:
+                    cur_file_info['expiry_ts'] = result.expiry_ts
+                cur_file_info['classification'] = file.classification.value
+                STORAGE.save_or_freshen_file(file.sha256, cur_file_info,
+                                             cur_file_info['expiry_ts'], cur_file_info['classification'])
         if missing_files:
             return missing_files
 
