@@ -125,7 +125,7 @@ def test_finish_error(client, dispatch_client):
 def test_finish_minimal(client, dispatch_client):
     task = random_minimal_obj(Task)
     result = random_minimal_obj(Result)
-    message = {'task': task.as_primitives(), 'result': result.as_primitives()}
+    message = {'task': task.as_primitives(), 'result': result.as_primitives(), 'freshen': False}
     resp = client.post('/api/v1/task/', headers=headers, json=message)
     assert resp.status_code == 200
     assert dispatch_client.service_finished.call_count == 1
@@ -150,7 +150,7 @@ def test_finish_heuristic(client, dispatch_client, heuristics):
     result.response.extracted = []
     result.response.supplementary = []
 
-    message = {'task': task.as_primitives(), 'result': result.as_primitives()}
+    message = {'task': task.as_primitives(), 'result': result.as_primitives(), 'freshen': True}
     resp = client.post('/api/v1/task/', headers=headers, json=message)
     assert resp.status_code == 200
     assert dispatch_client.service_finished.call_count == 1
@@ -173,7 +173,7 @@ def test_finish_missing_file(client, dispatch_client, heuristics):
     missing = {x.sha256 for x in result.response.extracted if not fs.exists(x.sha256)}
     missing |= {x.sha256 for x in result.response.supplementary if not fs.exists(x.sha256)}
 
-    message = {'task': task.as_primitives(), 'result': result.as_primitives()}
+    message = {'task': task.as_primitives(), 'result': result.as_primitives(), 'freshen': True}
     resp = client.post('/api/v1/task/', headers=headers, json=message)
     assert resp.status_code == 200
     assert resp.json['api_response']['success'] is False
