@@ -4,7 +4,7 @@ from flask import request
 from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.service import Service
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
-from assemblyline_service_server.config import LOGGER, STORAGE
+from assemblyline_service_server.config import LOGGER, STORAGE, config
 
 SUB_API = 'service'
 service_api = make_subapi_blueprint(SUB_API, api_version=1)
@@ -25,6 +25,7 @@ def register_service(client_info):
     {'keep_alive': true}
     """
     data = request.json
+    keep_alive = True
 
     try:
         # Get heuristics list
@@ -36,7 +37,9 @@ def register_service(client_info):
 
         # Create Service registration object
         service = Service(data)
-        keep_alive = True
+
+        # Force update channel to be the preferred update channel while registering a service.
+        service.update_channel = config.services.preferred_update_channel
 
         # Save service if it doesn't already exist
         if not STORAGE.service.get_if_exists(f'{service.name}_{service.version}'):
