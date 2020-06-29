@@ -38,6 +38,9 @@ def register_service(client_info):
         # Create Service registration object
         service = Service(data)
 
+        # Fix service version, we don't need to see the stable label
+        service.version = service.version.replace('stable', '')
+
         # Force update channel to be the preferred update channel while registering a service.
         service.update_channel = config.services.preferred_update_channel
 
