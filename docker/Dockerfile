@@ -4,5 +4,5 @@ ARG version
 # Install assemblyline UI
 RUN pip install --no-cache-dir --user assemblyline-service-server==$version && rm -rf ~/.cache/pip
 
-# Switch back to assemblyline and run the app
-CMD ["gunicorn", "-b", ":5003", "-w", "1", "-k", "geventwebsocket.gunicorn.workers.GeventWebSocketWorker", "assemblyline_service_server.app:app"]
+# run the app
+CMD ["gunicorn", "assemblyline_service_server.app:app", "--config=python:assemblyline_service_server.gunicorn_config"]
