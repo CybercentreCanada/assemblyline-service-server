@@ -138,10 +138,11 @@ stages:
     - script: |
         set -xv  # Echo commands before they are run
         export TAG=${BUILD_SOURCEBRANCH#"refs/tags/v"}
+        if [[ "$TAG" == *stable* ]]; then export BUILD_TYPE=stable; else export BUILD_TYPE=latest; fi
         export VERSION=${TAG/stable}
         export VERSION=${VERSION/beta/b}
         until sudo env "PATH=$PATH" python -m pip download "assemblyline-service-server==$VERSION" --pre --no-deps &> /dev/null; do sleep 2; done
-        docker build --build-arg version=$VERSION -t cccs/assemblyline-service-server:$TAG -t cccs/assemblyline-service-server:latest docker
+        docker build --build-arg version=$VERSION --build-arg branch=$BUILD_TYPE -t cccs/assemblyline-service-server:$TAG -t cccs/assemblyline-service-server:$BUILD_TYPE docker
         docker push cccs/assemblyline-service-server
       displayName: Deploy to Docker Hub
 
