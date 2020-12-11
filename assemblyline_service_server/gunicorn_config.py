@@ -5,3 +5,4 @@ import multiprocessing
 bind = f":{int(env.get('PORT', 5003))}"
 workers = int(env.get('WORKERS', multiprocessing.cpu_count() * 2 + 1))
 threads = int(env.get('THREADS', 2 * multiprocessing.cpu_count()))
+max_requests = int(env.get('MAX_REQUESTS', '1000'))
