@@ -103,11 +103,12 @@ def get_task(client_info):
                 result = STORAGE.create_empty_result_from_key(result_key)
                 dispatch_client.service_finished(task.sid, f"{result_key}.e", result)
                 return make_api_response(dict(task=False))
+
+            # No luck with the cache, lets dispatch the task to a client
+            stats['cache_miss'] += 1
         else:
             stats['cache_skipped'] += 1
 
-        # No luck with the cache, lets dispatch the task to a client
-        stats['cache_miss'] += 1
         status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
         return make_api_response(dict(task=task.as_primitives()))
     finally:
