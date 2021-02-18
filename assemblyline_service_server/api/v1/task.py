@@ -64,6 +64,7 @@ def get_task(client_info):
         "execute": 1,
         "cache_miss": 0,
         "cache_hit": 0,
+        "cache_skipped": 0,
         "scored": 0,
         "not_scored": 0
     }
@@ -102,6 +103,8 @@ def get_task(client_info):
                 result = STORAGE.create_empty_result_from_key(result_key)
                 dispatch_client.service_finished(task.sid, f"{result_key}.e", result)
                 return make_api_response(dict(task=False))
+        else:
+            stats['cache_skipped'] += 1
 
         # No luck with the cache, lets dispatch the task to a client
         stats['cache_miss'] += 1
