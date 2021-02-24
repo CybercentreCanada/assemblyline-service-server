@@ -60,7 +60,14 @@ def get_task(client_info):
     # suspect it of slacking off
     status_table.set(client_id, (service_name, ServiceStatus.Idle, time.time() + timeout + 5))
 
-    cache_miss = False
+    stats = {
+        "execute": 1,
+        "cache_miss": 0,
+        "cache_hit": 0,
+        "cache_skipped": 0,
+        "scored": 0,
+        "not_scored": 0
+    }
 
     task = dispatch_client.request_work(client_id, service_name, service_version, timeout=timeout)
 
@@ -81,23 +88,31 @@ def get_task(client_info):
         if not task.ignore_cache and not service_data.disable_cache:
             result = STORAGE.result.get_if_exists(result_key)
             if result:
+                stats['cache_hit'] += 1
+                if result.result.score:
+                    stats['scored'] += 1
+                else:
+                    stats['not_scored'] += 1
                 dispatch_client.service_finished(task.sid, result_key, result)
                 return make_api_response(dict(task=False))
 
             result = STORAGE.emptyresult.get_if_exists(f"{result_key}.e")
             if result:
+                stats['cache_hit'] += 1
+                stats['not_scored'] += 1
                 result = STORAGE.create_empty_result_from_key(result_key)
                 dispatch_client.service_finished(task.sid, f"{result_key}.e", result)
                 return make_api_response(dict(task=False))
 
             # No luck with the cache, lets dispatch the task to a client
-            cache_miss = True
+            stats['cache_miss'] += 1
+        else:
+            stats['cache_skipped'] += 1
 
         status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
         return make_api_response(dict(task=task.as_primitives()))
     finally:
-        export_metrics_once(service_name, Metrics, dict(execute=1, cache_miss=int(cache_miss)),
-                            host=client_id, counter_type='service')
+        export_metrics_once(service_name, Metrics, stats, host=client_id, counter_type='service')
 
 
 @task_api.route("/", methods=["POST"])
