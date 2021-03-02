@@ -1,5 +1,5 @@
 ARG branch=latest
-FROM cccs/assemblyline:$branch
+FROM cccs/assemblyline-core:$branch
 ARG version
 
 # Install assemblyline UI
