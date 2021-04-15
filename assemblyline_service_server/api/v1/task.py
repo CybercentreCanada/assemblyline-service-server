@@ -8,7 +8,7 @@ from assemblyline.common.isotime import now_as_iso
 from flask import request
 
 from assemblyline.common import forge
-from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
+from assemblyline.common.constants import SERVICE_STATE_HASH, SERVICE_VERSION_HASH, ServiceStatus
 from assemblyline.common.forge import CachedObject
 from assemblyline.odm import construct_safe
 from assemblyline.odm.messages.service_heartbeat import Metrics
@@ -18,13 +18,14 @@ from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.result import Result
 from assemblyline.odm.models.tagging import Tagging
 from assemblyline.remote.datatypes.exporting_counter import export_metrics_once
-from assemblyline.remote.datatypes.hash import ExpiringHash
+from assemblyline.remote.datatypes.hash import ExpiringHash, Hash
 from assemblyline_core.dispatching.client import DispatchClient
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
 from assemblyline_service_server.config import LOGGER, STORAGE, config
 from assemblyline_service_server.helper.heuristics import get_heuristics
 
 status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=60*30)
+version_table = Hash(SERVICE_VERSION_HASH)
 dispatch_client = DispatchClient(STORAGE)
 heuristics = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
 tag_whitelister = forge.get_tag_whitelister(log=LOGGER)
@@ -54,11 +55,13 @@ def get_task(client_info):
     """
     service_name = client_info['service_name']
     service_version = client_info['service_version']
+    service_tool_version = client_info['service_tool_version']
     client_id = client_info['client_id']
     timeout = int(float(request.headers.get('timeout', 30)))
     # Add a little extra to the status timeout so that the service has a chance to retry before we start to
     # suspect it of slacking off
     status_table.set(client_id, (service_name, ServiceStatus.Idle, time.time() + timeout + 5))
+    version_table.set(service_name, (time.time(), service_version, service_tool_version))
 
     stats = {
         "execute": 1,
@@ -79,7 +82,7 @@ def get_task(client_info):
         result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
                                            service_name=service_name,
                                            service_version=service_version,
-                                           service_tool_version=client_info['service_tool_version'],
+                                           service_tool_version=service_tool_version,
                                            is_empty=False,
                                            task=task)
         service_data = dispatch_client.service_data[service_name]
