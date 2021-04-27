@@ -168,7 +168,11 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
             heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
             section['heuristic']['heur_id'] = heur_id
             try:
-                section['heuristic'] = service_heuristic_to_result_heuristic(section['heuristic'], heuristics)
+                section['heuristic'], new_tags = service_heuristic_to_result_heuristic(section['heuristic'], heuristics)
+                for tag in new_tags:
+                    section['tags'].setdefault(tag[0], [])
+                    if tag[1] not in section['tags'][tag[0]]:
+                        section['tags'][tag[0]].append(tag[1])
                 total_score += section['heuristic']['score']
             except InvalidHeuristicException:
                 section['heuristic'] = None
