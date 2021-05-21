@@ -49,7 +49,7 @@ def download_file(sha256, client_info):
             return stream_file_response(open(temp_file.name, 'rb'), sha256, f_size)
         except FileStoreException:
             LOGGER.exception(f"{client_info['client_id']} - {client_info['service_name']} "
-                             f"Couldn't find file (SHA256: {sha256}) requested by service " 
+                             f"Couldn't find file (SHA256: {sha256}) requested by service "
                              "despite having a datastore entry.")
             return make_api_response({}, "The file was not found in the system.", 404)
 
