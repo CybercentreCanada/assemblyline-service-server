@@ -15,7 +15,7 @@ api = Blueprint("api", __name__, url_prefix=API_PREFIX)
 
 def make_subapi_blueprint(name, api_version=1):
     """ Create a flask Blueprint for a subapi in a standard way. """
-    return Blueprint(f"apiv{api_version}.{name}", name, url_prefix='/'.join([API_PREFIX, f"v{api_version}", name]))
+    return Blueprint(name, name, url_prefix='/'.join([API_PREFIX, f"v{api_version}", name]))
 
 
 ####################################
@@ -123,16 +123,16 @@ def stream_binary_response(reader, status_code=200):
 def api_version_list(**kwargs):
     """
     List all available API versions.
-    
-    Variables: 
+
+    Variables:
     None
-    
-    Arguments: 
+
+    Arguments:
     None
-    
+
     Data Block:
     None
-    
+
     Result example:
     ["v1"]         #List of API versions available
     """

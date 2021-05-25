@@ -1,7 +1,6 @@
 from flask import current_app, Blueprint, request
 
 from assemblyline_service_server.api.base import make_api_response
-from assemblyline_service_server.config import config
 
 API_PREFIX = "/api/v1"
 apiv1 = Blueprint("apiv1", __name__, url_prefix=API_PREFIX)
@@ -53,8 +52,8 @@ def get_api_documentation(**kwargs):
 
             doc_string = func.__doc__
             func_title = " ".join([x.capitalize() for x in rule.endpoint[rule.endpoint.rindex(".") + 1:].split("_")])
-            blueprint = rule.endpoint[rule.endpoint.index(".") + 1:rule.endpoint.rindex(".")]
-            if not blueprint:
+            blueprint = rule.endpoint[:rule.endpoint.rindex(".")]
+            if blueprint == "apiv1":
                 blueprint = "documentation"
 
             if blueprint not in api_blueprints:
@@ -70,15 +69,12 @@ def get_api_documentation(**kwargs):
             except Exception:
                 description = "[INCOMPLETE]\n\nTHIS API HAS NOT BEEN DOCUMENTED YET!"
 
-            if rule.endpoint == "apiv1.api_doc":
-                api_id = "documentation_api_doc"
-            else:
-                api_id = rule.endpoint.replace("apiv1.", "").replace(".", "_")
+            api_id = rule.endpoint.replace("apiv1.", "").replace(".", "_")
 
             api_list.append({
                 "name": func_title,
                 "id": api_id,
-                "function": rule.endpoint,
+                "function": f"api.v1.{rule.endpoint}",
                 "path": rule.rule,
                 "methods": methods,
                 "description": description,
