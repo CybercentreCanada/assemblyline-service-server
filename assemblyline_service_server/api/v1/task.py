@@ -21,7 +21,7 @@ from assemblyline.remote.datatypes.exporting_counter import export_metrics_once
 from assemblyline.remote.datatypes.hash import ExpiringHash, Hash
 from assemblyline_core.dispatching.client import DispatchClient
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
-from assemblyline_service_server.config import LOGGER, STORAGE, config
+from assemblyline_service_server.config import FILESTORE, LOGGER, STORAGE, config
 from assemblyline_service_server.helper.heuristics import get_heuristics
 
 status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=60*30)
@@ -201,21 +201,22 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
 
     result = Result(result)
 
-    with forge.get_filestore() as f_transport:
-        missing_files = []
-        for file in (result.response.extracted + result.response.supplementary):
-            cur_file_info = STORAGE.file.get_if_exists(file.sha256, as_obj=False)
-            if cur_file_info is None or not f_transport.exists(file.sha256):
-                missing_files.append(file.sha256)
-            elif cur_file_info is not None and freshen:
-                cur_file_info['archive_ts'] = result.archive_ts
-                if task.ttl:
-                    cur_file_info['expiry_ts'] = result.expiry_ts
-                cur_file_info['classification'] = file.classification.value
-                STORAGE.save_or_freshen_file(file.sha256, cur_file_info,
-                                             cur_file_info['expiry_ts'], cur_file_info['classification'])
-        if missing_files:
-            return missing_files
+    # File checking
+    missing_files = []
+    for file in (result.response.extracted + result.response.supplementary):
+        cur_file_info = STORAGE.file.get_if_exists(file.sha256, as_obj=False)
+        if cur_file_info is None or not FILESTORE.exists(file.sha256):
+            missing_files.append(file.sha256)
+        elif cur_file_info is not None and freshen:
+            cur_file_info['archive_ts'] = result.archive_ts
+            if task.ttl:
+                cur_file_info['expiry_ts'] = result.expiry_ts
+            cur_file_info['classification'] = file.classification.value
+            STORAGE.save_or_freshen_file(file.sha256, cur_file_info,
+                                         cur_file_info['expiry_ts'], cur_file_info['classification'])
+    if missing_files:
+        return missing_files
+    # End of file checking
 
     result_key = result.build_key(service_tool_version=result.response.service_tool_version, task=task)
     dispatch_client.service_finished(task.sid, result_key, result, temp_submission_data)
