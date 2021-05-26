@@ -37,20 +37,14 @@ def download_file(sha256, client_info):
     Result example:
     <THE FILE BINARY>
     """
-    file_obj = STORAGE.file.get(sha256, as_obj=False)
-
-    if not file_obj:
-        return make_api_response({}, "The file was not found in the system.", 404)
-
     with tempfile.NamedTemporaryFile() as temp_file:
         try:
             FILESTORE.download(sha256, temp_file.name)
             f_size = os.path.getsize(temp_file.name)
             return stream_file_response(open(temp_file.name, 'rb'), sha256, f_size)
         except FileStoreException:
-            LOGGER.exception(f"{client_info['client_id']} - {client_info['service_name']} "
-                             f"Couldn't find file (SHA256: {sha256}) requested by service "
-                             "despite having a datastore entry.")
+            LOGGER.exception(f"[{client_info['client_id']}] {client_info['service_name']} couldn't find file "
+                             f"{sha256} requested by service ")
             return make_api_response({}, "The file was not found in the system.", 404)
 
 
