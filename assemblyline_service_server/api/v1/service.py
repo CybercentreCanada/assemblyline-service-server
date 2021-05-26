@@ -45,14 +45,14 @@ def register_service(client_info):
         service.update_channel = config.services.preferred_update_channel
 
         # Save service if it doesn't already exist
-        if not STORAGE.service.get_if_exists(f'{service.name}_{service.version}'):
+        if not STORAGE.service.exists(f'{service.name}_{service.version}'):
             STORAGE.service.save(f'{service.name}_{service.version}', service)
             STORAGE.service.commit()
             LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} registered")
             keep_alive = False
 
         # Save service delta if it doesn't already exist
-        if not STORAGE.service_delta.get_if_exists(service.name):
+        if not STORAGE.service_delta.exists(service.name):
             STORAGE.service_delta.save(service.name, {'version': service.version})
             STORAGE.service_delta.commit()
             LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "

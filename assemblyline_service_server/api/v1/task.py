@@ -21,7 +21,7 @@ from assemblyline.remote.datatypes.exporting_counter import export_metrics_once
 from assemblyline.remote.datatypes.hash import ExpiringHash, Hash
 from assemblyline_core.dispatching.client import DispatchClient
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
-from assemblyline_service_server.config import LOGGER, STORAGE, config
+from assemblyline_service_server.config import FILESTORE, LOGGER, STORAGE, config
 from assemblyline_service_server.helper.heuristics import get_heuristics
 
 status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=60*30)
@@ -39,19 +39,15 @@ task_api._doc = "Perform operations on service tasks"
 @api_login()
 def get_task(client_info):
     """
-
     Header:
     {'container_id': abcd...123
      'service_name': 'Extract',
      'service_version': '4.0.1',
      'service_tool_version': '
-     'timeout': '30'
-
-    }
+     'timeout': '30'}
 
     Result example:
     {'keep_alive': true}
-
     """
     service_name = client_info['service_name']
     service_version = client_info['service_version']
@@ -60,60 +56,78 @@ def get_task(client_info):
     timeout = int(float(request.headers.get('timeout', 30)))
     # Add a little extra to the status timeout so that the service has a chance to retry before we start to
     # suspect it of slacking off
-    status_table.set(client_id, (service_name, ServiceStatus.Idle, time.time() + timeout + 5))
-    version_table.set(service_name, (time.time(), service_version, service_tool_version))
+    start_time = time.time()
+    remaining_time = timeout
+    status_table.set(client_id, (service_name, ServiceStatus.Idle, start_time + timeout + 5))
+    version_table.set(service_name, (start_time, service_version, service_tool_version))
 
     stats = {
-        "execute": 1,
+        "execute": 0,
         "cache_miss": 0,
         "cache_hit": 0,
         "cache_skipped": 0,
         "scored": 0,
         "not_scored": 0
     }
-
-    task = dispatch_client.request_work(client_id, service_name, service_version, timeout=timeout)
-
-    if not task:
-        # No task found in service queue
-        return make_api_response(dict(task=False))
-
     try:
-        result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
-                                           service_name=service_name,
-                                           service_version=service_version,
-                                           service_tool_version=service_tool_version,
-                                           is_empty=False,
-                                           task=task)
-        service_data = dispatch_client.service_data[service_name]
+        while remaining_time > 0:
+            cache_found = False
+            task = dispatch_client.request_work(client_id, service_name, service_version, timeout=remaining_time)
 
-        # If we are allowed, try to see if the result has been cached
-        if not task.ignore_cache and not service_data.disable_cache:
-            result = STORAGE.result.get_if_exists(result_key)
-            if result:
-                stats['cache_hit'] += 1
-                if result.result.score:
-                    stats['scored'] += 1
-                else:
-                    stats['not_scored'] += 1
-                dispatch_client.service_finished(task.sid, result_key, result)
+            if not task:
+                # No task found in service queue
                 return make_api_response(dict(task=False))
+            else:
+                stats['execute'] += 1
 
-            result = STORAGE.emptyresult.get_if_exists(f"{result_key}.e")
-            if result:
-                stats['cache_hit'] += 1
-                stats['not_scored'] += 1
-                result = STORAGE.create_empty_result_from_key(result_key)
-                dispatch_client.service_finished(task.sid, f"{result_key}.e", result)
-                return make_api_response(dict(task=False))
+            result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
+                                               service_name=service_name,
+                                               service_version=service_version,
+                                               service_tool_version=service_tool_version,
+                                               is_empty=False,
+                                               task=task)
+            service_data = dispatch_client.service_data[service_name]
 
-            # No luck with the cache, lets dispatch the task to a client
-            stats['cache_miss'] += 1
-        else:
-            stats['cache_skipped'] += 1
+            # If we are allowed, try to see if the result has been cached
+            if not task.ignore_cache and not service_data.disable_cache:
+                result = STORAGE.result.get_if_exists(result_key)
+                if result:
+                    stats['cache_hit'] += 1
+                    if result.result.score:
+                        stats['scored'] += 1
+                    else:
+                        stats['not_scored'] += 1
 
-        status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
-        return make_api_response(dict(task=task.as_primitives()))
+                    result.archive_ts = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
+                    if task.ttl:
+                        result.expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
+
+                    dispatch_client.service_finished(task.sid, result_key, result)
+                    cache_found = True
+
+                if not cache_found:
+                    result = STORAGE.emptyresult.get_if_exists(f"{result_key}.e")
+                    if result:
+                        stats['cache_hit'] += 1
+                        stats['not_scored'] += 1
+                        result = STORAGE.create_empty_result_from_key(result_key)
+                        dispatch_client.service_finished(task.sid, f"{result_key}.e", result)
+                        cache_found = True
+
+                # No luck with the cache, lets dispatch the task to a client
+                if not cache_found:
+                    stats['cache_miss'] += 1
+            else:
+                stats['cache_skipped'] += 1
+
+            if not cache_found:
+                status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
+                return make_api_response(dict(task=task.as_primitives()))
+
+            remaining_time = start_time + timeout - time.time()
+
+        # We've been processing cache hit for the length of the timeout... bailing out!
+        return make_api_response(dict(task=False))
     finally:
         export_metrics_once(service_name, Metrics, stats, host=client_id, counter_type='service')
 
@@ -123,14 +137,19 @@ def get_task(client_info):
 def task_finished(client_info):
     """
     Header:
-    {'client_id': 'abcd...123',
+    {'container_id': abcd...123
+     'service_name': 'Extract',
+     'service_version': '4.0.1',
+     'service_tool_version': '
     }
 
 
     Data Block:
-    {'exec_time': 300,
-     'task': {},
-     'result': ''
+    {
+     "exec_time": 300,
+     "task": <Original Task Dict>,
+     "result": <AL Result Dict>,
+     "freshen": true
     }
     """
     data = request.json
@@ -158,6 +177,23 @@ def task_finished(client_info):
 
 def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], client_info: Dict[str, str],
                        freshen: bool):
+    # Check if all files are in the filestore
+    if freshen:
+        missing_files = []
+        for f in result['response']['extracted'] + result['response']['supplementary']:
+            cur_file_info = STORAGE.file.get_if_exists(f['sha256'], as_obj=False)
+            if cur_file_info is None or not FILESTORE.exists(f['sha256']):
+                missing_files.append(f['sha256'])
+            else:
+                cur_file_info['archive_ts'] = result.get('archive_ts', None)
+                if task.ttl:
+                    cur_file_info['expiry_ts'] = result.get('expiry_ts', None)
+                cur_file_info['classification'] = f['classification']
+                STORAGE.save_or_freshen_file(f['sha256'], cur_file_info,
+                                             cur_file_info['expiry_ts'], cur_file_info['classification'])
+        if missing_files:
+            return missing_files
+
     service_name = client_info['service_name']
     client_id = client_info['client_id']
 
@@ -200,23 +236,6 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
             LOGGER.warning(f"[{task.sid}] Invalid tag data from {client_info['service_name']}: {dropped}")
 
     result = Result(result)
-
-    with forge.get_filestore() as f_transport:
-        missing_files = []
-        for file in (result.response.extracted + result.response.supplementary):
-            cur_file_info = STORAGE.file.get_if_exists(file.sha256, as_obj=False)
-            if cur_file_info is None or not f_transport.exists(file.sha256):
-                missing_files.append(file.sha256)
-            elif cur_file_info is not None and freshen:
-                cur_file_info['archive_ts'] = result.archive_ts
-                if task.ttl:
-                    cur_file_info['expiry_ts'] = result.expiry_ts
-                cur_file_info['classification'] = file.classification.value
-                STORAGE.save_or_freshen_file(file.sha256, cur_file_info,
-                                             cur_file_info['expiry_ts'], cur_file_info['classification'])
-        if missing_files:
-            return missing_files
-
     result_key = result.build_key(service_tool_version=result.response.service_tool_version, task=task)
     dispatch_client.service_finished(task.sid, result_key, result, temp_submission_data)
 

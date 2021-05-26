@@ -4,12 +4,12 @@ import tempfile
 
 from flask import request
 
-from assemblyline.common import forge, identify
+from assemblyline.common import identify
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.filestore import FileStoreException
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, stream_file_response, \
     api_login
-from assemblyline_service_server.config import LOGGER, STORAGE, config
+from assemblyline_service_server.config import FILESTORE, LOGGER, STORAGE, config
 
 SUB_API = 'file'
 file_api = make_subapi_blueprint(SUB_API, api_version=1)
@@ -37,20 +37,14 @@ def download_file(sha256, client_info):
     Result example:
     <THE FILE BINARY>
     """
-    file_obj = STORAGE.file.get(sha256, as_obj=False)
-
-    if not file_obj:
-        return make_api_response({}, "The file was not found in the system.", 404)
-
-    with forge.get_filestore() as f_transport, tempfile.NamedTemporaryFile() as temp_file:
+    with tempfile.NamedTemporaryFile() as temp_file:
         try:
-            f_transport.download(sha256, temp_file.name)
+            FILESTORE.download(sha256, temp_file.name)
             f_size = os.path.getsize(temp_file.name)
             return stream_file_response(open(temp_file.name, 'rb'), sha256, f_size)
         except FileStoreException:
-            LOGGER.exception(f"{client_info['client_id']} - {client_info['service_name']} "
-                             f"Couldn't find file (SHA256: {sha256}) requested by service "
-                             "despite having a datastore entry.")
+            LOGGER.exception(f"[{client_info['client_id']}] {client_info['service_name']} couldn't find file "
+                             f"{sha256} requested by service ")
             return make_api_response({}, "The file was not found in the system.", 404)
 
 
@@ -91,7 +85,7 @@ def upload_files(client_info):
     classification = request.headers['classification']
     ttl = int(request.headers['ttl'])
 
-    with forge.get_filestore() as f_transport, tempfile.NamedTemporaryFile(mode='bw') as temp_file:
+    with tempfile.NamedTemporaryFile(mode='bw') as temp_file:
         # Try reading multipart data from 'files' or a single file post from stream
         if request.content_type.startswith('multipart'):
             file = request.files['file']
@@ -121,8 +115,8 @@ def upload_files(client_info):
                                          file_info['classification'])
 
             # Upload file to the filestore if it doesn't already exist
-            if not f_transport.exists(file_info['sha256']):
-                f_transport.upload(temp_file.name, file_info['sha256'])
+            if not FILESTORE.exists(file_info['sha256']):
+                FILESTORE.upload(temp_file.name, file_info['sha256'])
         else:
             LOGGER.warning(f"{client_info['client_id']} - {client_info['service_name']} "
                            f"uploaded file (SHA256: {file_info['sha256']}) doesn't match "
