@@ -39,19 +39,15 @@ task_api._doc = "Perform operations on service tasks"
 @api_login()
 def get_task(client_info):
     """
-
     Header:
     {'container_id': abcd...123
      'service_name': 'Extract',
      'service_version': '4.0.1',
      'service_tool_version': '
-     'timeout': '30'
-
-    }
+     'timeout': '30'}
 
     Result example:
     {'keep_alive': true}
-
     """
     service_name = client_info['service_name']
     service_version = client_info['service_version']
@@ -123,14 +119,19 @@ def get_task(client_info):
 def task_finished(client_info):
     """
     Header:
-    {'client_id': 'abcd...123',
+    {'container_id': abcd...123
+     'service_name': 'Extract',
+     'service_version': '4.0.1',
+     'service_tool_version': '
     }
 
 
     Data Block:
-    {'exec_time': 300,
-     'task': {},
-     'result': ''
+    {
+     "exec_time": 300,
+     "task": <Original Task Dict>,
+     "result": <AL Result Dict>,
+     "freshen": true
     }
     """
     data = request.json
@@ -158,6 +159,23 @@ def task_finished(client_info):
 
 def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], client_info: Dict[str, str],
                        freshen: bool):
+    # Check if all files are in the filestore
+    if freshen:
+        missing_files = []
+        for f in result['response']['extracted'] + result['response']['supplementary']:
+            cur_file_info = STORAGE.file.get_if_exists(f['sha256'], as_obj=False)
+            if cur_file_info is None or not FILESTORE.exists(f['sha256']):
+                missing_files.append(f['sha256'])
+            else:
+                cur_file_info['archive_ts'] = result.get('archive_ts', None)
+                if task.ttl:
+                    cur_file_info['expiry_ts'] = result.get('expiry_ts', None)
+                cur_file_info['classification'] = f['classification']
+                STORAGE.save_or_freshen_file(f['sha256'], cur_file_info,
+                                             cur_file_info['expiry_ts'], cur_file_info['classification'])
+        if missing_files:
+            return missing_files
+
     service_name = client_info['service_name']
     client_id = client_info['client_id']
 
@@ -200,24 +218,6 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
             LOGGER.warning(f"[{task.sid}] Invalid tag data from {client_info['service_name']}: {dropped}")
 
     result = Result(result)
-
-    # File checking
-    missing_files = []
-    for file in (result.response.extracted + result.response.supplementary):
-        cur_file_info = STORAGE.file.get_if_exists(file.sha256, as_obj=False)
-        if cur_file_info is None or not FILESTORE.exists(file.sha256):
-            missing_files.append(file.sha256)
-        elif cur_file_info is not None and freshen:
-            cur_file_info['archive_ts'] = result.archive_ts
-            if task.ttl:
-                cur_file_info['expiry_ts'] = result.expiry_ts
-            cur_file_info['classification'] = file.classification.value
-            STORAGE.save_or_freshen_file(file.sha256, cur_file_info,
-                                         cur_file_info['expiry_ts'], cur_file_info['classification'])
-    if missing_files:
-        return missing_files
-    # End of file checking
-
     result_key = result.build_key(service_tool_version=result.response.service_tool_version, task=task)
     dispatch_client.service_finished(task.sid, result_key, result, temp_submission_data)
 
