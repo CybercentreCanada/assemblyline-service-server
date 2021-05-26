@@ -92,6 +92,11 @@ def get_task(client_info):
                     stats['scored'] += 1
                 else:
                     stats['not_scored'] += 1
+
+                result.archive_ts = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
+                if task.ttl:
+                    result.expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
+
                 dispatch_client.service_finished(task.sid, result_key, result)
                 return make_api_response(dict(task=False))
 
