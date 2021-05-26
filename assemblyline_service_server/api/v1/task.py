@@ -56,65 +56,78 @@ def get_task(client_info):
     timeout = int(float(request.headers.get('timeout', 30)))
     # Add a little extra to the status timeout so that the service has a chance to retry before we start to
     # suspect it of slacking off
-    status_table.set(client_id, (service_name, ServiceStatus.Idle, time.time() + timeout + 5))
-    version_table.set(service_name, (time.time(), service_version, service_tool_version))
+    start_time = time.time()
+    remaining_time = timeout
+    status_table.set(client_id, (service_name, ServiceStatus.Idle, start_time + timeout + 5))
+    version_table.set(service_name, (start_time, service_version, service_tool_version))
 
     stats = {
-        "execute": 1,
+        "execute": 0,
         "cache_miss": 0,
         "cache_hit": 0,
         "cache_skipped": 0,
         "scored": 0,
         "not_scored": 0
     }
-
-    task = dispatch_client.request_work(client_id, service_name, service_version, timeout=timeout)
-
-    if not task:
-        # No task found in service queue
-        return make_api_response(dict(task=False))
-
     try:
-        result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
-                                           service_name=service_name,
-                                           service_version=service_version,
-                                           service_tool_version=service_tool_version,
-                                           is_empty=False,
-                                           task=task)
-        service_data = dispatch_client.service_data[service_name]
+        while remaining_time > 0:
+            cache_found = False
+            task = dispatch_client.request_work(client_id, service_name, service_version, timeout=remaining_time)
 
-        # If we are allowed, try to see if the result has been cached
-        if not task.ignore_cache and not service_data.disable_cache:
-            result = STORAGE.result.get_if_exists(result_key)
-            if result:
-                stats['cache_hit'] += 1
-                if result.result.score:
-                    stats['scored'] += 1
-                else:
-                    stats['not_scored'] += 1
-
-                result.archive_ts = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
-                if task.ttl:
-                    result.expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
-
-                dispatch_client.service_finished(task.sid, result_key, result)
+            if not task:
+                # No task found in service queue
                 return make_api_response(dict(task=False))
+            else:
+                stats['execute'] += 1
 
-            result = STORAGE.emptyresult.get_if_exists(f"{result_key}.e")
-            if result:
-                stats['cache_hit'] += 1
-                stats['not_scored'] += 1
-                result = STORAGE.create_empty_result_from_key(result_key)
-                dispatch_client.service_finished(task.sid, f"{result_key}.e", result)
-                return make_api_response(dict(task=False))
+            result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
+                                               service_name=service_name,
+                                               service_version=service_version,
+                                               service_tool_version=service_tool_version,
+                                               is_empty=False,
+                                               task=task)
+            service_data = dispatch_client.service_data[service_name]
 
-            # No luck with the cache, lets dispatch the task to a client
-            stats['cache_miss'] += 1
-        else:
-            stats['cache_skipped'] += 1
+            # If we are allowed, try to see if the result has been cached
+            if not task.ignore_cache and not service_data.disable_cache:
+                result = STORAGE.result.get_if_exists(result_key)
+                if result:
+                    stats['cache_hit'] += 1
+                    if result.result.score:
+                        stats['scored'] += 1
+                    else:
+                        stats['not_scored'] += 1
 
-        status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
-        return make_api_response(dict(task=task.as_primitives()))
+                    result.archive_ts = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
+                    if task.ttl:
+                        result.expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
+
+                    dispatch_client.service_finished(task.sid, result_key, result)
+                    cache_found = True
+
+                if not cache_found:
+                    result = STORAGE.emptyresult.get_if_exists(f"{result_key}.e")
+                    if result:
+                        stats['cache_hit'] += 1
+                        stats['not_scored'] += 1
+                        result = STORAGE.create_empty_result_from_key(result_key)
+                        dispatch_client.service_finished(task.sid, f"{result_key}.e", result)
+                        cache_found = True
+
+                # No luck with the cache, lets dispatch the task to a client
+                if not cache_found:
+                    stats['cache_miss'] += 1
+            else:
+                stats['cache_skipped'] += 1
+
+            if not cache_found:
+                status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
+                return make_api_response(dict(task=task.as_primitives()))
+
+            remaining_time = start_time + timeout - time.time()
+
+        # We've been processing cache hit for the length of the timeout... bailing out!
+        return make_api_response(dict(task=False))
     finally:
         export_metrics_once(service_name, Metrics, stats, host=client_id, counter_type='service')
 
