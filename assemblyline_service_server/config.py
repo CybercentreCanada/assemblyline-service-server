@@ -7,7 +7,7 @@ from assemblyline.common import version
 from assemblyline.remote.datatypes.counters import Counters
 
 config = forge.get_config()
-    
+
 #################################################################
 # Configuration
 
@@ -40,7 +40,8 @@ LOGGER.debug('Logger ready!')
 
 #################################################################
 # Global instances
-STORAGE = forge.get_datastore()
+STORAGE = forge.get_datastore(config=config)
+FILESTORE = forge.get_filestore(config=config)
 
 # End global
 #################################################################

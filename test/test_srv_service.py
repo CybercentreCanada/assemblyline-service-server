@@ -78,8 +78,8 @@ def test_register_bad_service(client, storage):
 def test_register_new_service(client, storage):
     config_block = 'A CONFIG OBJECT FOR SURE'
     storage.get_service_with_delta.return_value = config_block
-    storage.service.get_if_exists.return_value = False
-    storage.service_delta.get_if_exists.return_value = False
+    storage.service.exists.return_value = False
+    storage.service_delta.exists.return_value = False
 
     service = random_minimal_obj(Service)
 
@@ -100,7 +100,7 @@ def test_register_new_service(client, storage):
 def test_register_new_service_version(client, storage):
     config_block = 'A CONFIG OBJECT FOR SURE'
     storage.get_service_with_delta.return_value = config_block
-    storage.service_delta.get_if_exists.return_value = False
+    storage.service_delta.exists.return_value = False
 
     service = random_minimal_obj(Service)
 
