@@ -8,7 +8,7 @@ from assemblyline.common.isotime import now_as_iso
 from flask import request
 
 from assemblyline.common import forge
-from assemblyline.common.constants import SERVICE_STATE_HASH, SERVICE_VERSION_HASH, ServiceStatus
+from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
 from assemblyline.common.forge import CachedObject
 from assemblyline.odm import construct_safe
 from assemblyline.odm.messages.service_heartbeat import Metrics
@@ -18,14 +18,13 @@ from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.result import Result
 from assemblyline.odm.models.tagging import Tagging
 from assemblyline.remote.datatypes.exporting_counter import export_metrics_once
-from assemblyline.remote.datatypes.hash import ExpiringHash, Hash
+from assemblyline.remote.datatypes.hash import ExpiringHash
 from assemblyline_core.dispatching.client import DispatchClient
 from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
 from assemblyline_service_server.config import FILESTORE, LOGGER, STORAGE, config
 from assemblyline_service_server.helper.heuristics import get_heuristics
 
 status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=60*30)
-version_table = Hash(SERVICE_VERSION_HASH)
 dispatch_client = DispatchClient(STORAGE)
 heuristics = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
 tag_whitelister = forge.get_tag_whitelister(log=LOGGER)
@@ -54,13 +53,10 @@ def get_task(client_info):
     service_tool_version = client_info['service_tool_version']
     client_id = client_info['client_id']
     timeout = int(float(request.headers.get('timeout', 30)))
-    # Add a little extra to the status timeout so that the service has a chance to retry before we start to
-    # suspect it of slacking off
+    service_data = dispatch_client.service_data[service_name]
+
     start_time = time.time()
     remaining_time = timeout
-    status_table.set(client_id, (service_name, ServiceStatus.Idle, start_time + timeout + 5))
-    version_table.set(service_name, (start_time, service_version, service_tool_version))
-
     stats = {
         "execute": 0,
         "cache_miss": 0,
@@ -69,16 +65,24 @@ def get_task(client_info):
         "scored": 0,
         "not_scored": 0
     }
+
     try:
         while remaining_time > 0:
             cache_found = False
+
+            # Set the service status to Idle since we will be waiting for a task
+            status_table.set(client_id, (service_name, ServiceStatus.Idle, start_time + timeout))
+
+            # Getting a new task
             task = dispatch_client.request_work(client_id, service_name, service_version, timeout=remaining_time)
 
             if not task:
-                # No task found in service queue
+                # We've reached the timeout and no task found in service queue
                 return make_api_response(dict(task=False))
-            else:
-                stats['execute'] += 1
+
+            # We've got a task to process, consider us busy
+            status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
+            stats['execute'] += 1
 
             result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
                                                service_name=service_name,
@@ -86,10 +90,10 @@ def get_task(client_info):
                                                service_tool_version=service_tool_version,
                                                is_empty=False,
                                                task=task)
-            service_data = dispatch_client.service_data[service_name]
 
             # If we are allowed, try to see if the result has been cached
             if not task.ignore_cache and not service_data.disable_cache:
+                # Checking for previous results for this key
                 result = STORAGE.result.get_if_exists(result_key)
                 if result:
                     stats['cache_hit'] += 1
@@ -106,6 +110,7 @@ def get_task(client_info):
                     cache_found = True
 
                 if not cache_found:
+                    # Checking for previous empty results for this key
                     result = STORAGE.emptyresult.get_if_exists(f"{result_key}.e")
                     if result:
                         stats['cache_hit'] += 1
@@ -114,16 +119,16 @@ def get_task(client_info):
                         dispatch_client.service_finished(task.sid, f"{result_key}.e", result)
                         cache_found = True
 
-                # No luck with the cache, lets dispatch the task to a client
                 if not cache_found:
                     stats['cache_miss'] += 1
             else:
                 stats['cache_skipped'] += 1
 
             if not cache_found:
-                status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
+                # No luck with the cache, lets dispatch the task to a client
                 return make_api_response(dict(task=task.as_primitives()))
 
+            # Recalculating how much time we have left before we reach the timeout
             remaining_time = start_time + timeout - time.time()
 
         # We've been processing cache hit for the length of the timeout... bailing out!
