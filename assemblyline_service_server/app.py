@@ -8,6 +8,7 @@ from assemblyline.common import forge, log as al_log
 from assemblyline_service_server.api.v1.file import file_api
 from assemblyline_service_server.api.v1.service import service_api
 from assemblyline_service_server.api.v1.task import task_api
+from assemblyline_service_server.healthz import healthz
 
 config = forge.get_config()
 
@@ -20,6 +21,7 @@ LOGGER.info("Service server ready to receive connections...")
 app = Flask('svc-server')
 app.config['SECRET_KEY'] = config.ui.secret_key
 
+app.register_blueprint(healthz)
 app.register_blueprint(file_api)
 app.register_blueprint(service_api)
 app.register_blueprint(task_api)
