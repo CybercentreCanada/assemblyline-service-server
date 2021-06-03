@@ -1,0 +1,35 @@
+
+from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
+from assemblyline_service_server.config import STORAGE
+
+SUB_API = 'whitelist'
+whitelist_api = make_subapi_blueprint(SUB_API, api_version=1)
+whitelist_api._doc = "Perform operations on file"
+
+
+@whitelist_api.route("/<sha256>/", methods=["GET"])
+@api_login()
+def exists(sha256, _):
+    """
+    Check if a file exists in the whitelist.
+
+    Variables:
+    sha256       => Hash of the file to check
+
+    Arguments:
+    None
+
+    Data Block:
+    None
+
+    API call example:
+    GET /api/v1/whitelist/123456...654321/
+
+    Result example:
+    <Whitelisting object>
+    """
+    whitelist = STORAGE.whitelist.get_if_exists(sha256)
+    if whitelist:
+        return make_api_response(whitelist)
+
+    return make_api_response({}, "The hash was not found in the whitelist.", 404)
