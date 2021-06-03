@@ -4,7 +4,7 @@ from assemblyline_service_server.config import STORAGE
 
 SUB_API = 'whitelist'
 whitelist_api = make_subapi_blueprint(SUB_API, api_version=1)
-whitelist_api._doc = "Perform operations on file"
+whitelist_api._doc = "Query whitelisted hashes"
 
 
 @whitelist_api.route("/<sha256>/", methods=["GET"])
@@ -14,7 +14,7 @@ def exists(sha256, _):
     Check if a file exists in the whitelist.
 
     Variables:
-    sha256       => Hash of the file to check
+    sha256       => Hash to check
 
     Arguments:
     None
