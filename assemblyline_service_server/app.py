@@ -8,7 +8,7 @@ from assemblyline.common import forge, log as al_log
 from assemblyline_service_server.api.v1.file import file_api
 from assemblyline_service_server.api.v1.service import service_api
 from assemblyline_service_server.api.v1.task import task_api
-from assemblyline_service_server.api.v1.whitelist import whitelist_api
+from assemblyline_service_server.api.v1.safelist import safelist_api
 from assemblyline_service_server.healthz import healthz
 
 config = forge.get_config()
@@ -26,7 +26,7 @@ app.register_blueprint(healthz)
 app.register_blueprint(file_api)
 app.register_blueprint(service_api)
 app.register_blueprint(task_api)
-app.register_blueprint(whitelist_api)
+app.register_blueprint(safelist_api)
 
 # Setup logging
 app.logger.setLevel(LOGGER.getEffectiveLevel())
