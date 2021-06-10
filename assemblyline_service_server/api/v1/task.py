@@ -52,11 +52,14 @@ def get_task(client_info):
     service_version = client_info['service_version']
     service_tool_version = client_info['service_tool_version']
     client_id = client_info['client_id']
-    timeout = int(float(request.headers.get('timeout', 30)))
-    service_data = dispatch_client.service_data[service_name]
+    remaining_time = timeout = int(float(request.headers.get('timeout', 30)))
+
+    try:
+        service_data = dispatch_client.service_data[service_name]
+    except KeyError:
+        return make_api_response({}, "The service you're asking task for does not exist, try later", 404)
 
     start_time = time.time()
-    remaining_time = timeout
     stats = {
         "execute": 0,
         "cache_miss": 0,
