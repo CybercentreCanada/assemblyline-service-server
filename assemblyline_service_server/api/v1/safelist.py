@@ -7,14 +7,14 @@ safelist_api = make_subapi_blueprint(SUB_API, api_version=1)
 safelist_api._doc = "Query safelisted hashes"
 
 
-@safelist_api.route("/<sha256>/", methods=["GET"])
+@safelist_api.route("/<qhash>/", methods=["GET"])
 @api_login()
-def exists(sha256, **_):
+def exists(qhash, **_):
     """
     Check if a file exists in the safelist.
 
     Variables:
-    sha256       => Hash to check
+    qhash       => Hash to check
 
     Arguments:
     None
@@ -28,7 +28,7 @@ def exists(sha256, **_):
     Result example:
     <Safelisting object>
     """
-    safelist = STORAGE.safelist.get_if_exists(sha256, as_obj=False)
+    safelist = STORAGE.safelist.get_if_exists(qhash, as_obj=False)
     if safelist:
         return make_api_response(safelist)
 
