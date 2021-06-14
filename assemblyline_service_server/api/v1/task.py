@@ -1,15 +1,14 @@
 import time
+
 from typing import cast, Dict, Any
-
-from assemblyline.common.dict_utils import flatten, unflatten
-from assemblyline.common.heuristics import service_heuristic_to_result_heuristic, InvalidHeuristicException
-
-from assemblyline.common.isotime import now_as_iso
 from flask import request
 
 from assemblyline.common import forge
 from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
+from assemblyline.common.dict_utils import flatten, unflatten
 from assemblyline.common.forge import CachedObject
+from assemblyline.common.heuristics import service_heuristic_to_result_heuristic, InvalidHeuristicException
+from assemblyline.common.isotime import now_as_iso
 from assemblyline.odm import construct_safe
 from assemblyline.odm.messages.service_heartbeat import Metrics
 from assemblyline.odm.messages.task import Task as ServiceTask
