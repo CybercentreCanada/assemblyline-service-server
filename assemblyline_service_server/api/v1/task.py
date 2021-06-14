@@ -207,6 +207,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     # Add scores to the heuristics, if any section set a heuristic
     total_score = 0
     for section in result['result']['sections']:
+        section['tags'] = flatten(section['tags'])
         if section.get('heuristic'):
             heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
             section['heuristic']['heur_id'] = heur_id
@@ -235,7 +236,9 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     # Process the tag values
     for section in result['result']['sections']:
         # Perform tag whitelisting
-        section['tags'] = unflatten(tag_whitelister.get_validated_tag_map(flatten(section['tags'])))
+        tags, safelisted_tags = tag_whitelister.get_validated_tag_map(section['tags'])
+        section['tags'] = unflatten(tags)
+        section['safelisted_tags'] = safelisted_tags
 
         section['tags'], dropped = construct_safe(Tagging, section.get('tags', {}))
 
