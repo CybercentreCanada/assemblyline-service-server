@@ -36,7 +36,7 @@ def client():
 def test_safelist_exist(client, storage):
     valid_hash = randomizer.get_random_hash(64)
     valid_resp = randomizer.random_model_obj(Safelist, as_json=True)
-    valid_resp['fileinfo']['sha256'] = valid_hash
+    valid_resp['hashes']['sha256'] = valid_hash
     storage.safelist.get_if_exists.return_value = valid_resp
 
     resp = client.get(f'/api/v1/safelist/{valid_hash}/', headers=headers)
