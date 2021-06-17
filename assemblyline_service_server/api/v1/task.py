@@ -26,7 +26,9 @@ from assemblyline_service_server.helper.heuristics import get_heuristics
 status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=60*30)
 dispatch_client = DispatchClient(STORAGE)
 heuristics = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
-tag_safelister = forge.get_tag_safelister(log=LOGGER)
+tag_safelister = CachedObject(forge.get_tag_safelister,
+                              kwargs=dict(log=LOGGER, config=config, datastore=STORAGE),
+                              refresh=300)
 
 SUB_API = 'task'
 task_api = make_subapi_blueprint(SUB_API, api_version=1)
