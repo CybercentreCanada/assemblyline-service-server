@@ -1,15 +1,14 @@
 import time
+
 from typing import cast, Dict, Any
-
-from assemblyline.common.dict_utils import flatten, unflatten
-from assemblyline.common.heuristics import service_heuristic_to_result_heuristic, InvalidHeuristicException
-
-from assemblyline.common.isotime import now_as_iso
 from flask import request
 
 from assemblyline.common import forge
 from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
+from assemblyline.common.dict_utils import flatten, unflatten
 from assemblyline.common.forge import CachedObject
+from assemblyline.common.heuristics import service_heuristic_to_result_heuristic, InvalidHeuristicException
+from assemblyline.common.isotime import now_as_iso
 from assemblyline.odm import construct_safe
 from assemblyline.odm.messages.service_heartbeat import Metrics
 from assemblyline.odm.messages.task import Task as ServiceTask
@@ -27,7 +26,9 @@ from assemblyline_service_server.helper.heuristics import get_heuristics
 status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=60*30)
 dispatch_client = DispatchClient(STORAGE)
 heuristics = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
-tag_whitelister = forge.get_tag_whitelister(log=LOGGER)
+tag_safelister = CachedObject(forge.get_tag_safelister,
+                              kwargs=dict(log=LOGGER, config=config, datastore=STORAGE),
+                              refresh=300)
 
 SUB_API = 'task'
 task_api = make_subapi_blueprint(SUB_API, api_version=1)
@@ -52,11 +53,14 @@ def get_task(client_info):
     service_version = client_info['service_version']
     service_tool_version = client_info['service_tool_version']
     client_id = client_info['client_id']
-    timeout = int(float(request.headers.get('timeout', 30)))
-    service_data = dispatch_client.service_data[service_name]
+    remaining_time = timeout = int(float(request.headers.get('timeout', 30)))
+
+    try:
+        service_data = dispatch_client.service_data[service_name]
+    except KeyError:
+        return make_api_response({}, "The service you're asking task for does not exist, try later", 404)
 
     start_time = time.time()
-    remaining_time = timeout
     stats = {
         "execute": 0,
         "cache_miss": 0,
@@ -205,6 +209,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     # Add scores to the heuristics, if any section set a heuristic
     total_score = 0
     for section in result['result']['sections']:
+        section['tags'] = flatten(section['tags'])
         if section.get('heuristic'):
             heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
             section['heuristic']['heur_id'] = heur_id
@@ -232,8 +237,10 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
 
     # Process the tag values
     for section in result['result']['sections']:
-        # Perform tag whitelisting
-        section['tags'] = unflatten(tag_whitelister.get_validated_tag_map(flatten(section['tags'])))
+        # Perform tag safelisting
+        tags, safelisted_tags = tag_safelister.get_validated_tag_map(section['tags'])
+        section['tags'] = unflatten(tags)
+        section['safelisted_tags'] = safelisted_tags
 
         section['tags'], dropped = construct_safe(Tagging, section.get('tags', {}))
 
