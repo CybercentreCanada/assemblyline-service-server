@@ -186,6 +186,12 @@ def task_finished(client_info):
 
 def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], client_info: Dict[str, str],
                        freshen: bool):
+    archive_ts = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
+    if task.ttl:
+        expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
+    else:
+        expiry_ts = None
+
     # Check if all files are in the filestore
     if freshen:
         missing_files = []
@@ -194,9 +200,8 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
             if cur_file_info is None or not FILESTORE.exists(f['sha256']):
                 missing_files.append(f['sha256'])
             else:
-                cur_file_info['archive_ts'] = result.get('archive_ts', None)
-                if task.ttl:
-                    cur_file_info['expiry_ts'] = result.get('expiry_ts', None)
+                cur_file_info['archive_ts'] = archive_ts
+                cur_file_info['expiry_ts'] = expiry_ts
                 cur_file_info['classification'] = f['classification']
                 STORAGE.save_or_freshen_file(f['sha256'], cur_file_info,
                                              cur_file_info['expiry_ts'], cur_file_info['classification'])
@@ -228,9 +233,8 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
 
     # Add timestamps for creation, archive and expiry
     result['created'] = now_as_iso()
-    result['archive_ts'] = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
-    if task.ttl:
-        result['expiry_ts'] = now_as_iso(task.ttl * 24 * 60 * 60)
+    result['archive_ts'] = archive_ts
+    result['expiry_ts'] = expiry_ts
 
     # Pop the temporary submission data
     temp_submission_data = result.pop('temp_submission_data', None)
