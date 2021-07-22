@@ -52,3 +52,20 @@ def test_safelist_missing(client, storage):
     resp = client.get(f'/api/v1/safelist/{invalid_hash}/', headers=headers)
     assert resp.status_code == 404
     assert resp.json['api_response'] is None
+
+
+# noinspection PyUnusedLocal
+def test_get_full_safelist(client, storage):
+    storage.safelist.search = {
+        "offset": 0,
+        "rows": 0,
+        "total": 0,
+        "items": []
+    }
+
+    resp = client.get('/api/v1/safelist/', headers=headers)
+    assert resp.status_code == 200
+    assert 'match' in resp.json['api_response']
+    assert 'regex' in resp.json['api_response']
+    assert isinstance(resp.json['api_response']['match'], dict)
+    assert isinstance(resp.json['api_response']['regex'], dict)
