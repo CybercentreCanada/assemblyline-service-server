@@ -69,3 +69,27 @@ def test_get_full_safelist(client, storage):
     assert 'regex' in resp.json['api_response']
     assert isinstance(resp.json['api_response']['match'], dict)
     assert isinstance(resp.json['api_response']['regex'], dict)
+
+
+# noinspection PyUnusedLocal
+def test_get_full_safelist_specific(client, storage):
+    storage.safelist.search = {
+        "offset": 0,
+        "rows": 0,
+        "total": 0,
+        "items": []
+    }
+
+    tag_type = "network.dynamic.domain"
+    resp = client.get(f'/api/v1/safelist/?tags={tag_type}', headers=headers)
+    assert resp.status_code == 200
+    assert 'match' in resp.json['api_response']
+    assert 'regex' in resp.json['api_response']
+    assert isinstance(resp.json['api_response']['match'], dict)
+    assert isinstance(resp.json['api_response']['regex'], dict)
+
+    for k in resp.json['api_response']['match']:
+        assert k == tag_type
+
+    for k in resp.json['api_response']['regex']:
+        assert k == tag_type
