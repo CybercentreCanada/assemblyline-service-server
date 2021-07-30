@@ -248,6 +248,15 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
 
         section['tags'], dropped = construct_safe(Tagging, section.get('tags', {}))
 
+        # Set section score to zero and lower total score if service is set to zeroize score
+        # and all tags were safelisted
+        if section.pop('zeroize_on_tag_safe', False) and \
+                section.get('heuristic') and \
+                len(tags) == 0 and \
+                len(safelisted_tags) != 0:
+            result['result']['score'] -= section['heuristic']['score']
+            section['heuristic']['score'] = 0
+
         if dropped:
             LOGGER.warning(f"[{task.sid}] Invalid tag data from {client_info['service_name']}: {dropped}")
 
