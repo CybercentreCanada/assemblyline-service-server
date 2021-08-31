@@ -56,12 +56,7 @@ def test_safelist_missing(client, storage):
 
 # noinspection PyUnusedLocal
 def test_get_full_safelist(client, storage):
-    storage.safelist.search = {
-        "offset": 0,
-        "rows": 0,
-        "total": 0,
-        "items": []
-    }
+    storage.safelist.stream_search.return_value = []
 
     resp = client.get('/api/v1/safelist/', headers=headers)
     assert resp.status_code == 200
@@ -73,12 +68,7 @@ def test_get_full_safelist(client, storage):
 
 # noinspection PyUnusedLocal
 def test_get_full_safelist_specific(client, storage):
-    storage.safelist.search = {
-        "offset": 0,
-        "rows": 0,
-        "total": 0,
-        "items": []
-    }
+    storage.safelist.stream_search.return_value = []
 
     tag_type = "network.dynamic.domain"
     resp = client.get(f'/api/v1/safelist/?tags={tag_type}', headers=headers)
@@ -97,14 +87,9 @@ def test_get_full_safelist_specific(client, storage):
 
 # noinspection PyUnusedLocal
 def test_get_signature_safelist(client, storage):
-    storage.safelist.search = {
-        "offset": 0,
-        "rows": 1,
-        "total": 1,
-        "items": [{"signature": {"name": "test"}}]
-    }
+    storage.safelist.stream_search.return_value = [{"signature": {"name": "test"}}]
 
-    resp = client.get('/api/v1/safelist/signature/', headers=headers)
+    resp = client.get('/api/v1/safelist/signatures/', headers=headers)
     assert resp.status_code == 200
     assert isinstance(resp.json['api_response'], list)
     assert resp.json['api_response'] == ['test']
