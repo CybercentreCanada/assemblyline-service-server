@@ -104,7 +104,7 @@ def test_get_signature_safelist(client, storage):
         "items": [{"signature": {"name": "test"}}]
     }
 
-    resp = client.get('/api/v1/safelist/', headers=headers)
+    resp = client.get('/api/v1/safelist/signature/', headers=headers)
     assert resp.status_code == 200
     assert isinstance(resp.json['api_response'], list)
     assert resp.json['api_response'] == ['test']
