@@ -93,3 +93,18 @@ def test_get_full_safelist_specific(client, storage):
 
     for k in resp.json['api_response']['regex']:
         assert k == tag_type
+
+
+# noinspection PyUnusedLocal
+def test_get_signature_safelist(client, storage):
+    storage.safelist.search = {
+        "offset": 0,
+        "rows": 1,
+        "total": 1,
+        "items": [{"signature": {"name": "test"}}]
+    }
+
+    resp = client.get('/api/v1/safelist/', headers=headers)
+    assert resp.status_code == 200
+    assert isinstance(resp.json['api_response'], list)
+    assert resp.json['api_response'] == ['test']
