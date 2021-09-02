@@ -7,7 +7,7 @@ from assemblyline.common import forge
 from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
 from assemblyline.common.dict_utils import flatten, unflatten
 from assemblyline.common.forge import CachedObject
-from assemblyline.common.heuristics import service_heuristic_to_result_heuristic, InvalidHeuristicException
+from assemblyline.common.heuristics import HeuristicHandler, InvalidHeuristicException
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.odm import construct_safe
 from assemblyline.odm.messages.service_heartbeat import Metrics
@@ -26,6 +26,7 @@ from assemblyline_service_server.helper.heuristics import get_heuristics
 status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=60*30)
 dispatch_client = DispatchClient(STORAGE)
 heuristics = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
+heuristic_hander = HeuristicHandler(STORAGE)
 tag_safelister = CachedObject(forge.get_tag_safelister,
                               kwargs=dict(log=LOGGER, config=config, datastore=STORAGE),
                               refresh=300)
@@ -214,12 +215,14 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     # Add scores to the heuristics, if any section set a heuristic
     total_score = 0
     for section in result['result']['sections']:
+        zeroize_on_sig_safe = section.pop('zeroize_on_sig_safe', True)
         section['tags'] = flatten(section['tags'])
         if section.get('heuristic'):
             heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
             section['heuristic']['heur_id'] = heur_id
             try:
-                section['heuristic'], new_tags = service_heuristic_to_result_heuristic(section['heuristic'], heuristics)
+                section['heuristic'], new_tags = heuristic_hander.service_heuristic_to_result_heuristic(
+                    section['heuristic'], heuristics, zeroize_on_sig_safe)
                 for tag in new_tags:
                     section['tags'].setdefault(tag[0], [])
                     if tag[1] not in section['tags'][tag[0]]:

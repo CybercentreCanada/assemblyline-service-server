@@ -97,3 +97,32 @@ def get_safelist_for_tags(**_):
             output['match'][sl['tag']['type']].append(sl['tag']['value'])
 
     return make_api_response(output)
+
+
+@safelist_api.route("/signatures/", methods=["GET"])
+@api_login()
+def get_safelist_for_signatures(**_):
+    """
+    Get the safelist for all heuristic's signatures
+
+    Variables:
+    None
+
+    Arguments:
+    None
+
+    Data Block:
+    None
+
+    API call example:
+    GET /api/v1/safelist/signatures/
+
+    Result example:
+    ["McAfee.Eicar", "Avira.Eicar", ...]
+    """
+    output = [
+        item['signature']['name']
+        for item in STORAGE.safelist.stream_search(
+            "type:signature AND enabled:true", fl="signature.name", as_obj=False)]
+
+    return make_api_response(output)
