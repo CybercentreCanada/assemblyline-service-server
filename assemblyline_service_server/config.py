@@ -3,7 +3,7 @@ import os
 
 from assemblyline.common import forge
 from assemblyline.common import log as al_log
-from assemblyline.common import version
+from assemblyline.common.version import BUILD_MINOR, FRAMEWORK_VERSION, SYSTEM_VERSION
 from assemblyline.remote.datatypes.counters import Counters
 
 config = forge.get_config()
@@ -13,9 +13,7 @@ config = forge.get_config()
 
 CLASSIFICATION = forge.get_classification()
 DEBUG = config.ui.debug
-BUILD_MASTER = version.FRAMEWORK_VERSION
-BUILD_LOWER = version.SYSTEM_VERSION
-BUILD_NO = version.BUILD_MINOR
+VERSION = os.environ.get('ASSEMBLYLINE_VERSION', f"{FRAMEWORK_VERSION}.{SYSTEM_VERSION}.{BUILD_MINOR}.dev0")
 AUTH_KEY = os.environ.get('SERVICE_API_AUTH_KEY', 'ThisIsARandomAuthKey...ChangeMe!')
 
 RATE_LIMITER = Counters(prefix="quota",

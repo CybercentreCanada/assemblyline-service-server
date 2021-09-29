@@ -6,7 +6,7 @@ import elasticapm
 from flask import current_app, Blueprint, jsonify, make_response, Response, request
 
 from assemblyline.common.str_utils import safe_str
-from assemblyline_service_server.config import BUILD_LOWER, BUILD_MASTER, BUILD_NO, LOGGER, AUTH_KEY, config
+from assemblyline_service_server.config import VERSION, LOGGER, AUTH_KEY, config
 from assemblyline_service_server.logger import log_with_traceback
 
 API_PREFIX = "/api"
@@ -59,7 +59,7 @@ def make_api_response(data, err="", status_code=200, cookies=None):
 
     resp = make_response(jsonify({"api_response": data,
                                   "api_error_message": err,
-                                  "api_server_version": f"{BUILD_MASTER}.{BUILD_LOWER}.{BUILD_NO}",
+                                  "api_server_version": VERSION,
                                   "api_status_code": status_code}),
                          status_code)
 
