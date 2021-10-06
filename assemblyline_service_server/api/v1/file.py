@@ -84,6 +84,7 @@ def upload_files(client_info):
     sha256 = request.headers['sha256']
     classification = request.headers['classification']
     ttl = int(request.headers['ttl'])
+    is_section_image = bool(request.headers['is_section_image'])
 
     with tempfile.NamedTemporaryFile(mode='bw') as temp_file:
         # Try reading multipart data from 'files' or a single file post from stream
@@ -112,7 +113,7 @@ def upload_files(client_info):
 
             # Update the datastore with the uploaded file
             STORAGE.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'],
-                                         file_info['classification'])
+                                         file_info['classification'], is_section_image=is_section_image)
 
             # Upload file to the filestore if it doesn't already exist
             if not FILESTORE.exists(file_info['sha256']):
