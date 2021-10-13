@@ -205,7 +205,8 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
                 cur_file_info['expiry_ts'] = expiry_ts
                 cur_file_info['classification'] = f['classification']
                 STORAGE.save_or_freshen_file(f['sha256'], cur_file_info,
-                                             cur_file_info['expiry_ts'], cur_file_info['classification'])
+                                             cur_file_info['expiry_ts'], cur_file_info['classification'],
+                                             is_section_image=f.get('is_section_image', False))
         if missing_files:
             return missing_files
 
