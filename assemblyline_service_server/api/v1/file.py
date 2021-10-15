@@ -84,7 +84,7 @@ def upload_files(client_info):
     sha256 = request.headers['sha256']
     classification = request.headers['classification']
     ttl = int(request.headers['ttl'])
-    is_section_image = bool(request.headers.get('is_section_image', False))
+    is_section_image = request.headers.get('is_section_image', 'false').lower() == 'true'
 
     with tempfile.NamedTemporaryFile(mode='bw') as temp_file:
         # Try reading multipart data from 'files' or a single file post from stream
