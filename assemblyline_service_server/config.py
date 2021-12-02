@@ -14,7 +14,7 @@ config = forge.get_config()
 CLASSIFICATION = forge.get_classification()
 DEBUG = config.ui.debug
 VERSION = os.environ.get('ASSEMBLYLINE_VERSION', f"{FRAMEWORK_VERSION}.{SYSTEM_VERSION}.{BUILD_MINOR}.dev0")
-AUTH_KEY = os.environ.get('SERVICE_API_AUTH_KEY', 'ThisIsARandomAuthKey...ChangeMe!')
+AUTH_KEY = os.environ.get('SERVICE_API_KEY', 'ThisIsARandomAuthKey...ChangeMe!')
 
 RATE_LIMITER = Counters(prefix="quota",
                         host=config.core.redis.nonpersistent.host,

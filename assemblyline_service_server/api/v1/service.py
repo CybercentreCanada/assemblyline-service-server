@@ -1,14 +1,20 @@
 
 from flask import request
 
+from assemblyline.odm.messages.changes import Operation
 from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.service import Service
-from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
+from assemblyline.remote.datatypes.events import EventSender
+from assemblyline_service_server.api.base import api_login, make_api_response, make_subapi_blueprint
 from assemblyline_service_server.config import LOGGER, STORAGE, config
 
 SUB_API = 'service'
 service_api = make_subapi_blueprint(SUB_API, api_version=1)
 service_api._doc = "Perform operations on service"
+
+event_sender = EventSender('changes.services',
+                           host=config.core.redis.nonpersistent.host,
+                           port=config.core.redis.nonpersistent.port)
 
 
 @service_api.route("/register/", methods=["PUT", "POST"])
@@ -89,6 +95,12 @@ def register_service(client_info):
             STORAGE.heuristic.commit()
 
         service_config = STORAGE.get_service_with_delta(service.name, as_obj=False)
+
+        # Notify components watching for service config changes
+        event_sender.send(service.name, {
+            'operation': Operation.Added,
+            'name': service.name
+        })
 
     except ValueError as e:  # Catch errors when building Service or Heuristic model(s)
         return make_api_response("", err=e, status_code=400)
