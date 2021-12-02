@@ -13,8 +13,8 @@ service_api = make_subapi_blueprint(SUB_API, api_version=1)
 service_api._doc = "Perform operations on service"
 
 event_sender = EventSender('changes.services',
-                           host=config.core.redis.pubsub.host,
-                           port=config.core.redis.pubsub.port)
+                           host=config.core.redis.nonpersistent.host,
+                           port=config.core.redis.nonpersistent.port)
 
 
 @service_api.route("/register/", methods=["PUT", "POST"])
