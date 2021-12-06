@@ -196,8 +196,10 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     # Check if all files are in the filestore
     if freshen:
         missing_files = []
+        hashes = list(set([f['sha256'] for f in result['response']['extracted'] + result['response']['supplementary']]))
+        file_infos = STORAGE.file.multiget(hashes, as_obj=False, error_on_missing=False)
         for f in result['response']['extracted'] + result['response']['supplementary']:
-            cur_file_info = STORAGE.file.get_if_exists(f['sha256'], as_obj=False)
+            cur_file_info = file_infos.get(f['sha256'], None)
             if cur_file_info is None or not FILESTORE.exists(f['sha256']):
                 missing_files.append(f['sha256'])
             else:
