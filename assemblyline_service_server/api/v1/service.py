@@ -37,6 +37,13 @@ def register_service(client_info):
         # Get heuristics list
         heuristics = data.pop('heuristics', None)
 
+        # Patch update_channel, registry_type before Service registration object creation
+        data['update_channel'] = data.get('update_channel', config.services.preferred_update_channel)
+        data['docker_config']['registry_type'] = data['docker_config'] \
+            .get('registry_type', config.services.preferred_registry_type)
+        for dep in data['dependencies'].values():
+            dep['container']['registry_type'] = dep.get('registry_type', config.services.preferred_registry_type)
+
         # Pop unused registration data
         for x in ['file_required', 'tool_version']:
             data.pop(x, None)
@@ -46,9 +53,6 @@ def register_service(client_info):
 
         # Fix service version, we don't need to see the stable label
         service.version = service.version.replace('stable', '')
-
-        # Force update channel to be the preferred update channel while registering a service.
-        service.update_channel = config.services.preferred_update_channel
 
         # Save service if it doesn't already exist
         if not STORAGE.service.exists(f'{service.name}_{service.version}'):
