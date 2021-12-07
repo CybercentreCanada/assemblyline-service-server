@@ -41,7 +41,7 @@ def register_service(client_info):
         data['update_channel'] = data.get('update_channel', config.services.preferred_update_channel)
         data['docker_config']['registry_type'] = data['docker_config'] \
             .get('registry_type', config.services.preferred_registry_type)
-        for dep in data['dependencies'].values():
+        for dep in data.get('dependencies', {}).values():
             dep['container']['registry_type'] = dep.get('registry_type', config.services.preferred_registry_type)
 
         # Pop unused registration data
