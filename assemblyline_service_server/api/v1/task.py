@@ -212,25 +212,23 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
 
     # Check if all files are in the filestore
     if freshen:
-        with elasticapm.capture_span(name="handle_task_result.process_embedded",
+        missing_files = []
+        hashes = list(set([f['sha256']
+                           for f in result['response']['extracted'] + result['response']['supplementary']]))
+        file_infos = STORAGE.file.multiget(hashes, as_obj=False, error_on_missing=False)
+
+        with elasticapm.capture_span(name="handle_task_result.freshen_files",
                                      span_type="al_svc_server"):
-            missing_files = []
-            hashes = list(set([f['sha256']
-                               for f in result['response']['extracted'] + result['response']['supplementary']]))
-            file_infos = STORAGE.file.multiget(hashes, as_obj=False, error_on_missing=False)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                res = {
+                    f['sha256']: executor.submit(freshen_file, file_infos, f)
+                    for f in result['response']['extracted'] + result['response']['supplementary']}
+            for k, v in res.items():
+                if v.result():
+                    missing_files.append(k)
 
-            with elasticapm.capture_span(name="handle_task_result.freshen_files",
-                                         span_type="al_svc_server"):
-                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                    res = {
-                        f['sha256']: executor.submit(freshen_file, file_infos, f)
-                        for f in result['response']['extracted'] + result['response']['supplementary']}
-                for k, v in res.items():
-                    if v.result():
-                        missing_files.append(k)
-
-            if missing_files:
-                return missing_files
+        if missing_files:
+            return missing_files
 
     service_name = client_info['service_name']
     client_id = client_info['client_id']
