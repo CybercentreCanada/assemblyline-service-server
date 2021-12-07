@@ -115,9 +115,8 @@ def upload_files(client_info):
             STORAGE.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'],
                                          file_info['classification'], is_section_image=is_section_image)
 
-            # Upload file to the filestore if it doesn't already exist
-            if not FILESTORE.exists(file_info['sha256']):
-                FILESTORE.upload(temp_file.name, file_info['sha256'])
+            # Upload file to the filestore (upload already checks if the file exists)
+            FILESTORE.upload(temp_file.name, file_info['sha256'])
         else:
             LOGGER.warning(f"{client_info['client_id']} - {client_info['service_name']} "
                            f"uploaded file (SHA256: {file_info['sha256']}) doesn't match "
