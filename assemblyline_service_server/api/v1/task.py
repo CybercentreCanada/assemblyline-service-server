@@ -1,8 +1,8 @@
 import concurrent.futures
-import elasticapm
 import time
+from typing import Any, Dict, cast
 
-from typing import cast, Dict, Any
+import elasticapm
 from flask import request
 
 from assemblyline.common import forge
@@ -21,7 +21,7 @@ from assemblyline.odm.models.tagging import Tagging
 from assemblyline.remote.datatypes.exporting_counter import export_metrics_once
 from assemblyline.remote.datatypes.hash import ExpiringHash
 from assemblyline_core.dispatching.client import DispatchClient
-from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
+from assemblyline_service_server.api.base import api_login, make_api_response, make_subapi_blueprint
 from assemblyline_service_server.config import FILESTORE, LOGGER, STORAGE, config
 from assemblyline_service_server.helper.heuristics import get_heuristics
 
@@ -219,13 +219,15 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
                                for f in result['response']['extracted'] + result['response']['supplementary']]))
             file_infos = STORAGE.file.multiget(hashes, as_obj=False, error_on_missing=False)
 
-            # TODO: This part should be executed in a threadpool
-            with concurrent.futures.ThreadPoolExecutor(5) as executor:
-                res = {f['sha256']: executor.submit(freshen_file, file_infos, f)
-                       for f in result['response']['extracted'] + result['response']['supplementary']}
-            for k, v in res.items():
-                if v.result():
-                    missing_files.append(k)
+            with elasticapm.capture_span(name="handle_task_result.freshen_files",
+                                         span_type="al_svc_server"):
+                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                    res = {
+                        f['sha256']: executor.submit(freshen_file, file_infos, f)
+                        for f in result['response']['extracted'] + result['response']['supplementary']}
+                for k, v in res.items():
+                    if v.result():
+                        missing_files.append(k)
 
             if missing_files:
                 return missing_files
