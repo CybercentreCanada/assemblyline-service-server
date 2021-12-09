@@ -1,6 +1,8 @@
+import concurrent.futures
 import time
+from typing import Any, Dict, cast
 
-from typing import cast, Dict, Any
+import elasticapm
 from flask import request
 
 from assemblyline.common import forge
@@ -19,7 +21,7 @@ from assemblyline.odm.models.tagging import Tagging
 from assemblyline.remote.datatypes.exporting_counter import export_metrics_once
 from assemblyline.remote.datatypes.hash import ExpiringHash
 from assemblyline_core.dispatching.client import DispatchClient
-from assemblyline_service_server.api.base import make_subapi_blueprint, make_api_response, api_login
+from assemblyline_service_server.api.base import api_login, make_api_response, make_subapi_blueprint
 from assemblyline_service_server.config import FILESTORE, LOGGER, STORAGE, config
 from assemblyline_service_server.helper.heuristics import get_heuristics
 
@@ -185,8 +187,23 @@ def task_finished(client_info):
         return make_api_response("", e, 400)
 
 
+@elasticapm.capture_span(span_type='al_svc_server')
 def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], client_info: Dict[str, str],
                        freshen: bool):
+
+    def freshen_file(file_info_list, item):
+        file_info = file_info_list.get(item['sha256'], None)
+        if file_info is None or not FILESTORE.exists(item['sha256']):
+            return True
+        else:
+            file_info['archive_ts'] = archive_ts
+            file_info['expiry_ts'] = expiry_ts
+            file_info['classification'] = item['classification']
+            STORAGE.save_or_freshen_file(item['sha256'], file_info,
+                                         file_info['expiry_ts'], file_info['classification'],
+                                         is_section_image=item.get('is_section_image', False))
+        return False
+
     archive_ts = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
     if task.ttl:
         expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
@@ -196,17 +213,20 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     # Check if all files are in the filestore
     if freshen:
         missing_files = []
-        for f in result['response']['extracted'] + result['response']['supplementary']:
-            cur_file_info = STORAGE.file.get_if_exists(f['sha256'], as_obj=False)
-            if cur_file_info is None or not FILESTORE.exists(f['sha256']):
-                missing_files.append(f['sha256'])
-            else:
-                cur_file_info['archive_ts'] = archive_ts
-                cur_file_info['expiry_ts'] = expiry_ts
-                cur_file_info['classification'] = f['classification']
-                STORAGE.save_or_freshen_file(f['sha256'], cur_file_info,
-                                             cur_file_info['expiry_ts'], cur_file_info['classification'],
-                                             is_section_image=f.get('is_section_image', False))
+        hashes = list(set([f['sha256']
+                           for f in result['response']['extracted'] + result['response']['supplementary']]))
+        file_infos = STORAGE.file.multiget(hashes, as_obj=False, error_on_missing=False)
+
+        with elasticapm.capture_span(name="handle_task_result.freshen_files",
+                                     span_type="al_svc_server"):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                res = {
+                    f['sha256']: executor.submit(freshen_file, file_infos, f)
+                    for f in result['response']['extracted'] + result['response']['supplementary']}
+            for k, v in res.items():
+                if v.result():
+                    missing_files.append(k)
+
         if missing_files:
             return missing_files
 
@@ -214,23 +234,25 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     client_id = client_info['client_id']
 
     # Add scores to the heuristics, if any section set a heuristic
-    total_score = 0
-    for section in result['result']['sections']:
-        zeroize_on_sig_safe = section.pop('zeroize_on_sig_safe', True)
-        section['tags'] = flatten(section['tags'])
-        if section.get('heuristic'):
-            heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
-            section['heuristic']['heur_id'] = heur_id
-            try:
-                section['heuristic'], new_tags = heuristic_hander.service_heuristic_to_result_heuristic(
-                    section['heuristic'], heuristics, zeroize_on_sig_safe)
-                for tag in new_tags:
-                    section['tags'].setdefault(tag[0], [])
-                    if tag[1] not in section['tags'][tag[0]]:
-                        section['tags'][tag[0]].append(tag[1])
-                total_score += section['heuristic']['score']
-            except InvalidHeuristicException:
-                section['heuristic'] = None
+    with elasticapm.capture_span(name="handle_task_result.process_heuristics",
+                                 span_type="al_svc_server"):
+        total_score = 0
+        for section in result['result']['sections']:
+            zeroize_on_sig_safe = section.pop('zeroize_on_sig_safe', True)
+            section['tags'] = flatten(section['tags'])
+            if section.get('heuristic'):
+                heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
+                section['heuristic']['heur_id'] = heur_id
+                try:
+                    section['heuristic'], new_tags = heuristic_hander.service_heuristic_to_result_heuristic(
+                        section['heuristic'], heuristics, zeroize_on_sig_safe)
+                    for tag in new_tags:
+                        section['tags'].setdefault(tag[0], [])
+                        if tag[1] not in section['tags'][tag[0]]:
+                            section['tags'][tag[0]].append(tag[1])
+                    total_score += section['heuristic']['score']
+                except InvalidHeuristicException:
+                    section['heuristic'] = None
 
     # Update the total score of the result
     result['result']['score'] = total_score
@@ -244,32 +266,33 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     temp_submission_data = result.pop('temp_submission_data', None)
 
     # Process the tag values
-    for section in result['result']['sections']:
-        # Perform tag safelisting
-        tags, safelisted_tags = tag_safelister.get_validated_tag_map(section['tags'])
-        section['tags'] = unflatten(tags)
-        section['safelisted_tags'] = safelisted_tags
+    with elasticapm.capture_span(name="handle_task_result.process_tags",
+                                 span_type="al_svc_server"):
+        for section in result['result']['sections']:
+            # Perform tag safelisting
+            tags, safelisted_tags = tag_safelister.get_validated_tag_map(section['tags'])
+            section['tags'] = unflatten(tags)
+            section['safelisted_tags'] = safelisted_tags
 
-        section['tags'], dropped = construct_safe(Tagging, section.get('tags', {}))
+            section['tags'], dropped = construct_safe(Tagging, section.get('tags', {}))
 
-        # Set section score to zero and lower total score if service is set to zeroize score
-        # and all tags were safelisted
-        if section.pop('zeroize_on_tag_safe', False) and \
-                section.get('heuristic') and \
-                len(tags) == 0 and \
-                len(safelisted_tags) != 0:
-            result['result']['score'] -= section['heuristic']['score']
-            section['heuristic']['score'] = 0
+            # Set section score to zero and lower total score if service is set to zeroize score
+            # and all tags were safelisted
+            if section.pop('zeroize_on_tag_safe', False) and \
+                    section.get('heuristic') and \
+                    len(tags) == 0 and \
+                    len(safelisted_tags) != 0:
+                result['result']['score'] -= section['heuristic']['score']
+                section['heuristic']['score'] = 0
 
-        if dropped:
-            LOGGER.warning(f"[{task.sid}] Invalid tag data from {client_info['service_name']}: {dropped}")
+            if dropped:
+                LOGGER.warning(f"[{task.sid}] Invalid tag data from {client_info['service_name']}: {dropped}")
 
     result = Result(result)
     result_key = result.build_key(service_tool_version=result.response.service_tool_version, task=task)
     dispatch_client.service_finished(task.sid, result_key, result, temp_submission_data)
 
     # Metrics
-
     if result.result.score > 0:
         export_metrics_once(service_name, Metrics, dict(scored=1), host=client_id, counter_type='service')
     else:
@@ -279,6 +302,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
                 f"successfully completed task {f' in {exec_time}ms' if exec_time else ''}")
 
 
+@elasticapm.capture_span(span_type='al_svc_server')
 def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], client_info: Dict[str, str]) -> None:
     service_name = client_info['service_name']
     client_id = client_info['client_id']
