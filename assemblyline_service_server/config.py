@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 
 from assemblyline.common import forge
 from assemblyline.common import log as al_log
@@ -40,6 +41,7 @@ LOGGER.debug('Logger ready!')
 # Global instances
 STORAGE = forge.get_datastore(config=config)
 FILESTORE = forge.get_filestore(config=config)
+LOCK = threading.Lock()
 
 # End global
 #################################################################
