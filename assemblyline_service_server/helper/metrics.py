@@ -1,12 +1,16 @@
 from assemblyline.common.metrics import MetricsFactory
 from assemblyline.odm.messages.service_heartbeat import Metrics
+from assemblyline_service_server.config import LOCK
 
 METRICS_FACTORIES = {}
 
 
 def get_metrics_factory(service_name):
-    if service_name in METRICS_FACTORIES:
-        return METRICS_FACTORIES[service_name]
+    factory = METRICS_FACTORIES.get(service_name, None)
 
-    factory = MetricsFactory('service', Metrics, name=service_name, export_zero=False)
-    METRICS_FACTORIES[service_name] = factory
+    if factory is None:
+        with LOCK.aquire():
+            factory = MetricsFactory('service', Metrics, name=service_name, export_zero=False)
+            METRICS_FACTORIES[service_name] = factory
+
+    return factory
