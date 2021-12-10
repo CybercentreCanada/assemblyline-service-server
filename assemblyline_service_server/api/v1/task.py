@@ -12,18 +12,17 @@ from assemblyline.common.forge import CachedObject
 from assemblyline.common.heuristics import HeuristicHandler, InvalidHeuristicException
 from assemblyline.common.isotime import now_as_iso
 from assemblyline.odm import construct_safe
-from assemblyline.odm.messages.service_heartbeat import Metrics
 from assemblyline.odm.messages.task import Task as ServiceTask
 from assemblyline.odm.models.error import Error
 from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.odm.models.result import Result
 from assemblyline.odm.models.tagging import Tagging
-from assemblyline.remote.datatypes.exporting_counter import export_metrics_once
 from assemblyline.remote.datatypes.hash import ExpiringHash
 from assemblyline_core.dispatching.client import DispatchClient
 from assemblyline_service_server.api.base import api_login, make_api_response, make_subapi_blueprint
 from assemblyline_service_server.config import FILESTORE, LOGGER, STORAGE, config
 from assemblyline_service_server.helper.heuristics import get_heuristics
+from assemblyline_service_server.helper.metrics import get_metrics_factory
 
 status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=60*30)
 dispatch_client = DispatchClient(STORAGE)
@@ -57,6 +56,7 @@ def get_task(client_info):
     service_tool_version = client_info['service_tool_version']
     client_id = client_info['client_id']
     remaining_time = timeout = int(float(request.headers.get('timeout', 30)))
+    metric_factory = get_metrics_factory(service_name)
 
     try:
         service_data = dispatch_client.service_data[service_name]
@@ -64,84 +64,74 @@ def get_task(client_info):
         return make_api_response({}, "The service you're asking task for does not exist, try later", 404)
 
     start_time = time.time()
-    stats = {
-        "execute": 0,
-        "cache_miss": 0,
-        "cache_hit": 0,
-        "cache_skipped": 0,
-        "scored": 0,
-        "not_scored": 0
-    }
 
-    try:
-        while remaining_time > 0:
-            cache_found = False
+    while remaining_time > 0:
+        cache_found = False
 
-            # Set the service status to Idle since we will be waiting for a task
-            status_table.set(client_id, (service_name, ServiceStatus.Idle, start_time + timeout))
+        # Set the service status to Idle since we will be waiting for a task
+        status_table.set(client_id, (service_name, ServiceStatus.Idle, start_time + timeout))
 
-            # Getting a new task
-            task = dispatch_client.request_work(client_id, service_name, service_version, timeout=remaining_time)
+        # Getting a new task
+        task = dispatch_client.request_work(client_id, service_name, service_version, timeout=remaining_time)
 
-            if not task:
-                # We've reached the timeout and no task found in service queue
-                return make_api_response(dict(task=False))
+        if not task:
+            # We've reached the timeout and no task found in service queue
+            return make_api_response(dict(task=False))
 
-            # We've got a task to process, consider us busy
-            status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
-            stats['execute'] += 1
+        # We've got a task to process, consider us busy
+        status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
+        metric_factory.increment('execute')
 
-            result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
-                                               service_name=service_name,
-                                               service_version=service_version,
-                                               service_tool_version=service_tool_version,
-                                               is_empty=False,
-                                               task=task)
+        result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
+                                           service_name=service_name,
+                                           service_version=service_version,
+                                           service_tool_version=service_tool_version,
+                                           is_empty=False,
+                                           task=task)
 
-            # If we are allowed, try to see if the result has been cached
-            if not task.ignore_cache and not service_data.disable_cache:
-                # Checking for previous results for this key
-                result = STORAGE.result.get_if_exists(result_key)
-                if result:
-                    stats['cache_hit'] += 1
-                    if result.result.score:
-                        stats['scored'] += 1
-                    else:
-                        stats['not_scored'] += 1
+        # If we are allowed, try to see if the result has been cached
+        if not task.ignore_cache and not service_data.disable_cache:
+            # Checking for previous results for this key
+            result = STORAGE.result.get_if_exists(result_key)
+            if result:
+                metric_factory.increment('cache_hit')
+                if result.result.score:
+                    metric_factory.increment('scored')
+                else:
+                    metric_factory.increment('not_scored')
 
-                    result.archive_ts = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
-                    if task.ttl:
-                        result.expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
+                result.archive_ts = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
+                if task.ttl:
+                    result.expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
 
-                    dispatch_client.service_finished(task.sid, result_key, result)
-                    cache_found = True
-
-                if not cache_found:
-                    # Checking for previous empty results for this key
-                    result = STORAGE.emptyresult.get_if_exists(f"{result_key}.e")
-                    if result:
-                        stats['cache_hit'] += 1
-                        stats['not_scored'] += 1
-                        result = STORAGE.create_empty_result_from_key(result_key)
-                        dispatch_client.service_finished(task.sid, f"{result_key}.e", result)
-                        cache_found = True
-
-                if not cache_found:
-                    stats['cache_miss'] += 1
-            else:
-                stats['cache_skipped'] += 1
+                dispatch_client.service_finished(task.sid, result_key, result)
+                cache_found = True
 
             if not cache_found:
-                # No luck with the cache, lets dispatch the task to a client
-                return make_api_response(dict(task=task.as_primitives()))
+                # Checking for previous empty results for this key
+                result = STORAGE.emptyresult.get_if_exists(f"{result_key}.e")
+                if result:
+                    metric_factory.increment('cache_hit')
+                    metric_factory.increment('not_scored')
+                    result = STORAGE.create_empty_result_from_key(result_key)
+                    dispatch_client.service_finished(task.sid, f"{result_key}.e", result)
+                    cache_found = True
 
-            # Recalculating how much time we have left before we reach the timeout
-            remaining_time = start_time + timeout - time.time()
+            if not cache_found:
+                metric_factory.increment('cache_miss')
 
-        # We've been processing cache hit for the length of the timeout... bailing out!
-        return make_api_response(dict(task=False))
-    finally:
-        export_metrics_once(service_name, Metrics, stats, host=client_id, counter_type='service')
+        else:
+            metric_factory.increment('cache_skipped')
+
+        if not cache_found:
+            # No luck with the cache, lets dispatch the task to a client
+            return make_api_response(dict(task=task.as_primitives()))
+
+        # Recalculating how much time we have left before we reach the timeout
+        remaining_time = start_time + timeout - time.time()
+
+    # We've been processing cache hit for the length of the timeout... bailing out!
+    return make_api_response(dict(task=False))
 
 
 @task_api.route("/", methods=["POST"])
@@ -231,7 +221,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
             return missing_files
 
     service_name = client_info['service_name']
-    client_id = client_info['client_id']
+    metric_factory = get_metrics_factory(service_name)
 
     # Add scores to the heuristics, if any section set a heuristic
     with elasticapm.capture_span(name="handle_task_result.process_heuristics",
@@ -294,9 +284,9 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
 
     # Metrics
     if result.result.score > 0:
-        export_metrics_once(service_name, Metrics, dict(scored=1), host=client_id, counter_type='service')
+        metric_factory.increment('scored')
     else:
-        export_metrics_once(service_name, Metrics, dict(not_scored=1), host=client_id, counter_type='service')
+        metric_factory.increment('not_scored')
 
     LOGGER.info(f"[{task.sid}] {client_info['client_id']} - {client_info['service_name']} "
                 f"successfully completed task {f' in {exec_time}ms' if exec_time else ''}")
@@ -305,7 +295,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
 @elasticapm.capture_span(span_type='al_svc_server')
 def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], client_info: Dict[str, str]) -> None:
     service_name = client_info['service_name']
-    client_id = client_info['client_id']
+    metric_factory = get_metrics_factory(service_name)
 
     LOGGER.info(f"[{task.sid}] {client_info['client_id']} - {client_info['service_name']} "
                 f"failed to complete task {f' in {exec_time}ms' if exec_time else ''}")
@@ -322,6 +312,6 @@ def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], 
 
     # Metrics
     if error.response.status == 'FAIL_RECOVERABLE':
-        export_metrics_once(service_name, Metrics, dict(fail_recoverable=1), host=client_id, counter_type='service')
+        metric_factory.increment('fail_recoverable')
     else:
-        export_metrics_once(service_name, Metrics, dict(fail_nonrecoverable=1), host=client_id, counter_type='service')
+        metric_factory.increment('fail_nonrecoverable')
