@@ -9,7 +9,7 @@ def get_metrics_factory(service_name):
     factory = METRICS_FACTORIES.get(service_name, None)
 
     if factory is None:
-        with LOCK.acquire():
+        with LOCK:
             factory = MetricsFactory('service', Metrics, name=service_name, export_zero=False)
             METRICS_FACTORIES[service_name] = factory
 
