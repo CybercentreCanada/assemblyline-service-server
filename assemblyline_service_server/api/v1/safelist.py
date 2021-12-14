@@ -30,7 +30,7 @@ def exists(qhash, **_):
     Result example:
     <Safelisting object>
     """
-    safelist = client.safelist.exists(qhash, _)
+    safelist = client.safelist.exists(qhash, **_)
     if safelist:
         return make_api_response(safelist)
     return make_api_response(None, "The hash was not found in the safelist.", 404)
