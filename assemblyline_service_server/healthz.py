@@ -1,6 +1,6 @@
 from flask import Blueprint, abort, make_response
 
-from assemblyline_service_server.config import STORAGE
+from assemblyline_core.tasking.config import STORAGE
 
 API_PREFIX = "/healthz"
 healthz = Blueprint("healthz", __name__, url_prefix=API_PREFIX)

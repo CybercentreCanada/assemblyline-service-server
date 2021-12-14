@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from assemblyline.odm import randomizer
 from assemblyline.odm.models.safelist import Safelist
 from assemblyline_service_server import app
-from assemblyline_service_server.config import AUTH_KEY
+from assemblyline_core.tasking.config import AUTH_KEY
 
 headers = {
     'Container-Id': randomizer.get_random_hash(12),

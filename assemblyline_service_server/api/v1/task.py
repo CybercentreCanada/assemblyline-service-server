@@ -1,36 +1,7 @@
-import concurrent.futures
-import time
-from typing import Any, Dict, cast
-
-import elasticapm
 from flask import request
 
-from assemblyline.common import forge
-from assemblyline.common.constants import SERVICE_STATE_HASH, ServiceStatus
-from assemblyline.common.dict_utils import flatten, unflatten
-from assemblyline.common.forge import CachedObject
-from assemblyline.common.heuristics import HeuristicHandler, InvalidHeuristicException
-from assemblyline.common.isotime import now_as_iso
-from assemblyline.odm import construct_safe
-from assemblyline.odm.messages.task import Task as ServiceTask
-from assemblyline.odm.models.error import Error
-from assemblyline.odm.models.heuristic import Heuristic
-from assemblyline.odm.models.result import Result
-from assemblyline.odm.models.tagging import Tagging
-from assemblyline.remote.datatypes.hash import ExpiringHash
-from assemblyline_core.dispatching.client import DispatchClient
-from assemblyline_service_server.api.base import api_login, make_api_response, make_subapi_blueprint
-from assemblyline_service_server.config import FILESTORE, LOGGER, STORAGE, config
-from assemblyline_service_server.helper.heuristics import get_heuristics
-from assemblyline_service_server.helper.metrics import get_metrics_factory
-
-status_table = ExpiringHash(SERVICE_STATE_HASH, ttl=60*30)
-dispatch_client = DispatchClient(STORAGE)
-heuristics = cast(Dict[str, Heuristic], CachedObject(get_heuristics, refresh=300))
-heuristic_hander = HeuristicHandler(STORAGE)
-tag_safelister = CachedObject(forge.get_tag_safelister,
-                              kwargs=dict(log=LOGGER, config=config, datastore=STORAGE),
-                              refresh=300)
+from assemblyline_core.tasking.helper.response import make_api_response
+from assemblyline_service_server.api.base import api_login, make_subapi_blueprint, client
 
 SUB_API = 'task'
 task_api = make_subapi_blueprint(SUB_API, api_version=1)
@@ -51,87 +22,10 @@ def get_task(client_info):
     Result example:
     {'keep_alive': true}
     """
-    service_name = client_info['service_name']
-    service_version = client_info['service_version']
-    service_tool_version = client_info['service_tool_version']
-    client_id = client_info['client_id']
-    remaining_time = timeout = int(float(request.headers.get('timeout', 30)))
-    metric_factory = get_metrics_factory(service_name)
-
     try:
-        service_data = dispatch_client.service_data[service_name]
+        return make_api_response(client.task.get_task(client_info, request.headers))
     except KeyError:
         return make_api_response({}, "The service you're asking task for does not exist, try later", 404)
-
-    start_time = time.time()
-
-    while remaining_time > 0:
-        cache_found = False
-
-        # Set the service status to Idle since we will be waiting for a task
-        status_table.set(client_id, (service_name, ServiceStatus.Idle, start_time + timeout))
-
-        # Getting a new task
-        task = dispatch_client.request_work(client_id, service_name, service_version, timeout=remaining_time)
-
-        if not task:
-            # We've reached the timeout and no task found in service queue
-            return make_api_response(dict(task=False))
-
-        # We've got a task to process, consider us busy
-        status_table.set(client_id, (service_name, ServiceStatus.Running, time.time() + service_data.timeout))
-        metric_factory.increment('execute')
-
-        result_key = Result.help_build_key(sha256=task.fileinfo.sha256,
-                                           service_name=service_name,
-                                           service_version=service_version,
-                                           service_tool_version=service_tool_version,
-                                           is_empty=False,
-                                           task=task)
-
-        # If we are allowed, try to see if the result has been cached
-        if not task.ignore_cache and not service_data.disable_cache:
-            # Checking for previous results for this key
-            result = STORAGE.result.get_if_exists(result_key)
-            if result:
-                metric_factory.increment('cache_hit')
-                if result.result.score:
-                    metric_factory.increment('scored')
-                else:
-                    metric_factory.increment('not_scored')
-
-                result.archive_ts = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
-                if task.ttl:
-                    result.expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
-
-                dispatch_client.service_finished(task.sid, result_key, result)
-                cache_found = True
-
-            if not cache_found:
-                # Checking for previous empty results for this key
-                result = STORAGE.emptyresult.get_if_exists(f"{result_key}.e")
-                if result:
-                    metric_factory.increment('cache_hit')
-                    metric_factory.increment('not_scored')
-                    result = STORAGE.create_empty_result_from_key(result_key)
-                    dispatch_client.service_finished(task.sid, f"{result_key}.e", result)
-                    cache_found = True
-
-            if not cache_found:
-                metric_factory.increment('cache_miss')
-
-        else:
-            metric_factory.increment('cache_skipped')
-
-        if not cache_found:
-            # No luck with the cache, lets dispatch the task to a client
-            return make_api_response(dict(task=task.as_primitives()))
-
-        # Recalculating how much time we have left before we reach the timeout
-        remaining_time = start_time + timeout - time.time()
-
-    # We've been processing cache hit for the length of the timeout... bailing out!
-    return make_api_response(dict(task=False))
 
 
 @task_api.route("/", methods=["POST"])
@@ -154,164 +48,10 @@ def task_finished(client_info):
      "freshen": true
     }
     """
-    data = request.json
-    exec_time = data.get('exec_time')
-
     try:
-        task = ServiceTask(data['task'])
-
-        if 'result' in data:  # Task created a result
-            missing_files = handle_task_result(exec_time, task, data['result'], client_info, data['freshen'])
-            if missing_files:
-                return make_api_response(dict(success=False, missing_files=missing_files))
-            return make_api_response(dict(success=True))
-
-        elif 'error' in data:  # Task created an error
-            error = data['error']
-            handle_task_error(exec_time, task, error, client_info)
-            return make_api_response(dict(success=True))
-        else:
-            return make_api_response("", "No result or error provided by service.", 400)
-
-    except ValueError as e:  # Catch errors when building Task or Result model
+        response = client.task.task_finished(client_info, request.json)
+        if response:
+            return make_api_response(response)
+        return make_api_response("", "No result or error provided by service.", 400)
+    except ValueError as e:
         return make_api_response("", e, 400)
-
-
-@elasticapm.capture_span(span_type='al_svc_server')
-def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any], client_info: Dict[str, str],
-                       freshen: bool):
-
-    def freshen_file(file_info_list, item):
-        file_info = file_info_list.get(item['sha256'], None)
-        if file_info is None or not FILESTORE.exists(item['sha256']):
-            return True
-        else:
-            file_info['archive_ts'] = archive_ts
-            file_info['expiry_ts'] = expiry_ts
-            file_info['classification'] = item['classification']
-            STORAGE.save_or_freshen_file(item['sha256'], file_info,
-                                         file_info['expiry_ts'], file_info['classification'],
-                                         is_section_image=item.get('is_section_image', False))
-        return False
-
-    archive_ts = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
-    if task.ttl:
-        expiry_ts = now_as_iso(task.ttl * 24 * 60 * 60)
-    else:
-        expiry_ts = None
-
-    # Check if all files are in the filestore
-    if freshen:
-        missing_files = []
-        hashes = list(set([f['sha256']
-                           for f in result['response']['extracted'] + result['response']['supplementary']]))
-        file_infos = STORAGE.file.multiget(hashes, as_obj=False, error_on_missing=False)
-
-        with elasticapm.capture_span(name="handle_task_result.freshen_files",
-                                     span_type="al_svc_server"):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                res = {
-                    f['sha256']: executor.submit(freshen_file, file_infos, f)
-                    for f in result['response']['extracted'] + result['response']['supplementary']}
-            for k, v in res.items():
-                if v.result():
-                    missing_files.append(k)
-
-        if missing_files:
-            return missing_files
-
-    service_name = client_info['service_name']
-    metric_factory = get_metrics_factory(service_name)
-
-    # Add scores to the heuristics, if any section set a heuristic
-    with elasticapm.capture_span(name="handle_task_result.process_heuristics",
-                                 span_type="al_svc_server"):
-        total_score = 0
-        for section in result['result']['sections']:
-            zeroize_on_sig_safe = section.pop('zeroize_on_sig_safe', True)
-            section['tags'] = flatten(section['tags'])
-            if section.get('heuristic'):
-                heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
-                section['heuristic']['heur_id'] = heur_id
-                try:
-                    section['heuristic'], new_tags = heuristic_hander.service_heuristic_to_result_heuristic(
-                        section['heuristic'], heuristics, zeroize_on_sig_safe)
-                    for tag in new_tags:
-                        section['tags'].setdefault(tag[0], [])
-                        if tag[1] not in section['tags'][tag[0]]:
-                            section['tags'][tag[0]].append(tag[1])
-                    total_score += section['heuristic']['score']
-                except InvalidHeuristicException:
-                    section['heuristic'] = None
-
-    # Update the total score of the result
-    result['result']['score'] = total_score
-
-    # Add timestamps for creation, archive and expiry
-    result['created'] = now_as_iso()
-    result['archive_ts'] = archive_ts
-    result['expiry_ts'] = expiry_ts
-
-    # Pop the temporary submission data
-    temp_submission_data = result.pop('temp_submission_data', None)
-
-    # Process the tag values
-    with elasticapm.capture_span(name="handle_task_result.process_tags",
-                                 span_type="al_svc_server"):
-        for section in result['result']['sections']:
-            # Perform tag safelisting
-            tags, safelisted_tags = tag_safelister.get_validated_tag_map(section['tags'])
-            section['tags'] = unflatten(tags)
-            section['safelisted_tags'] = safelisted_tags
-
-            section['tags'], dropped = construct_safe(Tagging, section.get('tags', {}))
-
-            # Set section score to zero and lower total score if service is set to zeroize score
-            # and all tags were safelisted
-            if section.pop('zeroize_on_tag_safe', False) and \
-                    section.get('heuristic') and \
-                    len(tags) == 0 and \
-                    len(safelisted_tags) != 0:
-                result['result']['score'] -= section['heuristic']['score']
-                section['heuristic']['score'] = 0
-
-            if dropped:
-                LOGGER.warning(f"[{task.sid}] Invalid tag data from {client_info['service_name']}: {dropped}")
-
-    result = Result(result)
-    result_key = result.build_key(service_tool_version=result.response.service_tool_version, task=task)
-    dispatch_client.service_finished(task.sid, result_key, result, temp_submission_data)
-
-    # Metrics
-    if result.result.score > 0:
-        metric_factory.increment('scored')
-    else:
-        metric_factory.increment('not_scored')
-
-    LOGGER.info(f"[{task.sid}] {client_info['client_id']} - {client_info['service_name']} "
-                f"successfully completed task {f' in {exec_time}ms' if exec_time else ''}")
-
-
-@elasticapm.capture_span(span_type='al_svc_server')
-def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], client_info: Dict[str, str]) -> None:
-    service_name = client_info['service_name']
-    metric_factory = get_metrics_factory(service_name)
-
-    LOGGER.info(f"[{task.sid}] {client_info['client_id']} - {client_info['service_name']} "
-                f"failed to complete task {f' in {exec_time}ms' if exec_time else ''}")
-
-    # Add timestamps for creation, archive and expiry
-    error['created'] = now_as_iso()
-    error['archive_ts'] = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
-    if task.ttl:
-        error['expiry_ts'] = now_as_iso(task.ttl * 24 * 60 * 60)
-
-    error = Error(error)
-    error_key = error.build_key(service_tool_version=error.response.service_tool_version, task=task)
-    dispatch_client.service_failed(task.sid, error_key, error)
-
-    # Metrics
-    if error.response.status == 'FAIL_RECOVERABLE':
-        metric_factory.increment('fail_recoverable')
-    else:
-        metric_factory.increment('fail_nonrecoverable')

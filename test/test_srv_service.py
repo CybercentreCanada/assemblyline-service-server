@@ -8,7 +8,7 @@ from assemblyline.odm.randomizer import random_minimal_obj
 from assemblyline.odm.models.service import Service
 
 from assemblyline.odm import randomizer
-from assemblyline_service_server.config import AUTH_KEY
+from assemblyline_core.tasking.config import AUTH_KEY
 from assemblyline_service_server import app
 
 
