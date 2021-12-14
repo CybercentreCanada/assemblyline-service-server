@@ -156,7 +156,6 @@ def task_finished(client_info):
     """
     data = request.json
     exec_time = data.get('exec_time')
-
     try:
         task = ServiceTask(data['task'])
 
@@ -221,6 +220,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
             return missing_files
 
     service_name = client_info['service_name']
+    client_id = client_info['client_id']
     metric_factory = get_metrics_factory(service_name)
 
     # Add scores to the heuristics, if any section set a heuristic
@@ -231,7 +231,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
             zeroize_on_sig_safe = section.pop('zeroize_on_sig_safe', True)
             section['tags'] = flatten(section['tags'])
             if section.get('heuristic'):
-                heur_id = f"{client_info['service_name'].upper()}.{str(section['heuristic']['heur_id'])}"
+                heur_id = f"{service_name.upper()}.{str(section['heuristic']['heur_id'])}"
                 section['heuristic']['heur_id'] = heur_id
                 try:
                     section['heuristic'], new_tags = heuristic_hander.service_heuristic_to_result_heuristic(
@@ -276,7 +276,7 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
                 section['heuristic']['score'] = 0
 
             if dropped:
-                LOGGER.warning(f"[{task.sid}] Invalid tag data from {client_info['service_name']}: {dropped}")
+                LOGGER.warning(f"[{task.sid}] Invalid tag data from {service_name}: {dropped}")
 
     result = Result(result)
     result_key = result.build_key(service_tool_version=result.response.service_tool_version, task=task)
@@ -288,16 +288,19 @@ def handle_task_result(exec_time: int, task: ServiceTask, result: Dict[str, Any]
     else:
         metric_factory.increment('not_scored')
 
-    LOGGER.info(f"[{task.sid}] {client_info['client_id']} - {client_info['service_name']} "
+    LOGGER.info(f"[{task.sid}] {client_id} - {service_name} "
                 f"successfully completed task {f' in {exec_time}ms' if exec_time else ''}")
+
+    status_table.set(client_id, (service_name, ServiceStatus.Idle, time.time() + 5))
 
 
 @elasticapm.capture_span(span_type='al_svc_server')
 def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], client_info: Dict[str, str]) -> None:
     service_name = client_info['service_name']
+    client_id = client_info['client_id']
     metric_factory = get_metrics_factory(service_name)
 
-    LOGGER.info(f"[{task.sid}] {client_info['client_id']} - {client_info['service_name']} "
+    LOGGER.info(f"[{task.sid}] {client_id} - {service_name} "
                 f"failed to complete task {f' in {exec_time}ms' if exec_time else ''}")
 
     # Add timestamps for creation, archive and expiry
@@ -315,3 +318,5 @@ def handle_task_error(exec_time: int, task: ServiceTask, error: Dict[str, Any], 
         metric_factory.increment('fail_recoverable')
     else:
         metric_factory.increment('fail_nonrecoverable')
+
+    status_table.set(client_id, (service_name, ServiceStatus.Idle, time.time() + 5))
