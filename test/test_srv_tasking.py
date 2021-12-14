@@ -14,7 +14,7 @@ from assemblyline.remote.datatypes import get_client
 
 from assemblyline_service_server import app
 from assemblyline_service_server.api.v1 import task
-from assemblyline_service_server.config import AUTH_KEY
+from assemblyline_core.tasking.config import AUTH_KEY
 
 
 @pytest.fixture(scope='function')
