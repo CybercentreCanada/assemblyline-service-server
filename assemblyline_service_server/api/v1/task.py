@@ -1,5 +1,6 @@
-from assemblyline_core.tasking.helper.response import make_api_response
 from flask import request
+
+from assemblyline_core.tasking.helper.response import make_api_response
 from assemblyline_service_server.api.base import api_login, make_subapi_blueprint, client
 
 SUB_API = 'task'
