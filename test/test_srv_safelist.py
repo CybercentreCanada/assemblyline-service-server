@@ -22,7 +22,7 @@ headers = {
 @pytest.fixture(scope='function')
 def storage():
     ds = MagicMock()
-    with patch('assemblyline_service_server.api.v1.safelist.STORAGE', ds):
+    with patch('assemblyline_core.tasking.config.STORAGE', ds):
         yield ds
 
 

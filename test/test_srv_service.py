@@ -29,7 +29,7 @@ def client():
 @pytest.fixture(scope='function')
 def storage():
     ds = MagicMock()
-    with patch('assemblyline_service_server.api.v1.service.STORAGE', ds):
+    with patch('assemblyline_core.tasking.config.STORAGE', ds):
         yield ds
 
 
