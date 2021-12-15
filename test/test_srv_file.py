@@ -28,7 +28,7 @@ headers = {
 @pytest.fixture(scope='function')
 def file_datastore():
     ds = MagicMock()
-    with patch('assemblyline_core.tasking.config.STORAGE', ds):
+    with patch('assemblyline_core.tasking.client.api.file.STORAGE', ds):
         yield ds
 
 

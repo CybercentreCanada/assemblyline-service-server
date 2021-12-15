@@ -47,21 +47,21 @@ headers = {
 @pytest.fixture(scope='function')
 def storage():
     ds = MagicMock()
-    with patch('assemblyline_core.tasking.config.STORAGE', ds):
+    with patch('assemblyline_core.tasking.client.api.task.STORAGE', ds):
         yield ds
 
 
 @pytest.fixture(scope='function')
 def heuristics():
     ds = MagicMock()
-    with patch('assemblyline_core.tasking.config.HEURISTICS', ds):
+    with patch('assemblyline_core.tasking.client.api.task.HEURISTICS', ds):
         yield ds
 
 
 @pytest.fixture(scope='function')
 def dispatch_client():
     ds = MagicMock()
-    with patch('assemblyline_core.tasking.config.DISPATCH_CLIENT', ds):
+    with patch('assemblyline_core.tasking.client.api.task.DISPATCH_CLIENT', ds):
         yield ds
 
 

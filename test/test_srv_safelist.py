@@ -22,7 +22,7 @@ headers = {
 @pytest.fixture(scope='function')
 def storage():
     ds = MagicMock()
-    with patch('assemblyline_core.tasking.config.STORAGE', ds):
+    with patch('assemblyline_core.tasking.client.api.safelist.STORAGE', ds):
         yield ds
 
 
@@ -71,7 +71,7 @@ def test_get_full_safelist_specific(client, storage):
     storage.safelist.stream_search.return_value = []
 
     tag_type = "network.dynamic.domain"
-    resp = client.get(f'/api/v1/safelist/?tags={tag_type}', headers=headers)
+    resp = client.get(f'/api/v1/safelist/?tag_types={tag_type}', headers=headers)
     assert resp.status_code == 200
     assert 'match' in resp.json['api_response']
     assert 'regex' in resp.json['api_response']
