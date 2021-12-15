@@ -66,7 +66,7 @@ def get_safelist_for_tags(**_):
         }
     }
     """
-    tag_types = request.args.get('tags', None)
+    tag_types = request.args.get('tag_types', None)
     return make_api_response(client.safelist.get_safelist_for_tags(tag_types, **_))
 
 
