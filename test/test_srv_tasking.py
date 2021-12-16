@@ -14,7 +14,7 @@ from assemblyline.remote.datatypes import get_client
 
 from assemblyline_service_server import app
 from assemblyline_service_server.api.v1 import task
-from assemblyline_core.tasking.config import AUTH_KEY
+from assemblyline_service_server.config import AUTH_KEY
 
 
 @pytest.fixture(scope='function')
@@ -47,21 +47,21 @@ headers = {
 @pytest.fixture(scope='function')
 def storage():
     ds = MagicMock()
-    with patch('assemblyline_core.tasking.client.api.task.STORAGE', ds):
+    with patch('assemblyline_service_server.config.TASKING_CLIENT.datastore', ds):
         yield ds
 
 
 @pytest.fixture(scope='function')
 def heuristics():
     ds = MagicMock()
-    with patch('assemblyline_core.tasking.client.api.task.HEURISTICS', ds):
+    with patch('assemblyline_service_server.config.TASKING_CLIENT.heuristics', ds):
         yield ds
 
 
 @pytest.fixture(scope='function')
 def dispatch_client():
     ds = MagicMock()
-    with patch('assemblyline_core.tasking.client.api.task.DISPATCH_CLIENT', ds):
+    with patch('assemblyline_service_server.config.TASKING_CLIENT.dispatch_client', ds):
         yield ds
 
 

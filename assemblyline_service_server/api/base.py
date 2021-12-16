@@ -1,15 +1,14 @@
-import elasticapm
 import functools
 
-from flask import current_app, Blueprint, request
+import elasticapm
+from flask import Blueprint, current_app, request
 
-from assemblyline_core.tasking.config import LOGGER, AUTH_KEY, config
-from assemblyline_core.tasking.helper.response import make_api_response
-from assemblyline_core.tasking import client
-
+from assemblyline_service_server.config import AUTH_KEY, LOGGER, config, TASKING_CLIENT as client
+from assemblyline_service_server.helper.response import make_api_response
 
 API_PREFIX = "/api"
 api = Blueprint("api", __name__, url_prefix=API_PREFIX)
+
 
 def make_subapi_blueprint(name, api_version=1):
     """ Create a flask Blueprint for a subapi in a standard way. """

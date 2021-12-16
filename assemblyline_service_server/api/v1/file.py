@@ -1,9 +1,7 @@
 from flask import request
 
 from assemblyline.filestore import FileStoreException
-from assemblyline_core.tasking import client
-from assemblyline_core.tasking.config import LOGGER
-from assemblyline_core.tasking.helper.response import make_api_response
+from assemblyline_service_server.helper.response import make_api_response, stream_file_response
 from assemblyline_service_server.api.base import make_subapi_blueprint, api_login, client
 
 SUB_API = 'file'
@@ -33,10 +31,8 @@ def download_file(sha256, client_info):
     <THE FILE BINARY>
     """
     try:
-        return client.file.download_file(sha256)
+        return stream_file_response(**client.download_file(sha256, client_info))
     except FileStoreException:
-        LOGGER.exception(f"[{client_info['client_id']}] {client_info['service_name']} couldn't find file "
-                         f"{sha256} requested by service ")
         return make_api_response({}, "The file was not found in the system.", 404)
 
 
@@ -73,7 +69,7 @@ def upload_files(client_info):
     Result example:
     {"success": true}
     """
-    success, error = client.file.upload_files(client_info, request)
+    success, error = client.upload_files(client_info, request)
     if not success:
         return make_api_response(dict(success=False), err=error, status_code=400)
     return make_api_response(dict(success=True), status_code=200)

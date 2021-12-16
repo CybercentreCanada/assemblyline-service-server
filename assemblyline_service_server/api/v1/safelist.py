@@ -1,7 +1,6 @@
 from flask import request
 
-from assemblyline_core.tasking import client
-from assemblyline_core.tasking.helper.response import make_api_response
+from assemblyline_service_server.helper.response import make_api_response
 from assemblyline_service_server.api.base import api_login, make_subapi_blueprint, client
 
 SUB_API = 'safelist'
@@ -30,7 +29,7 @@ def exists(qhash, **_):
     Result example:
     <Safelisting object>
     """
-    safelist = client.safelist.exists(qhash, **_)
+    safelist = client.exists(qhash, **_)
     if safelist:
         return make_api_response(safelist)
     return make_api_response(None, "The hash was not found in the safelist.", 404)
@@ -67,7 +66,7 @@ def get_safelist_for_tags(**_):
     }
     """
     tag_types = request.args.get('tag_types', None)
-    return make_api_response(client.safelist.get_safelist_for_tags(tag_types, **_))
+    return make_api_response(client.get_safelist_for_tags(tag_types, **_))
 
 
 @safelist_api.route("/signatures/", methods=["GET"])
@@ -91,4 +90,4 @@ def get_safelist_for_signatures(**_):
     Result example:
     ["McAfee.Eicar", "Avira.Eicar", ...]
     """
-    return make_api_response(client.safelist.get_safelist_for_signatures(**_))
+    return make_api_response(client.get_safelist_for_signatures(**_))

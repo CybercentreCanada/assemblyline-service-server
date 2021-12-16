@@ -5,7 +5,7 @@ import pytest
 
 from assemblyline.common import forge
 from assemblyline.odm import randomizer
-from assemblyline_core.tasking.config import AUTH_KEY
+from assemblyline_service_server.config import AUTH_KEY
 from assemblyline_service_server import app
 
 
@@ -28,7 +28,7 @@ headers = {
 @pytest.fixture(scope='function')
 def file_datastore():
     ds = MagicMock()
-    with patch('assemblyline_core.tasking.client.api.file.STORAGE', ds):
+    with patch('assemblyline_service_server.config.TASKING_CLIENT.datastore', ds):
         yield ds
 
 

@@ -1,6 +1,6 @@
 from flask import request
 
-from assemblyline_core.tasking.helper.response import make_api_response
+from assemblyline_service_server.helper.response import make_api_response
 from assemblyline_service_server.api.base import api_login, make_subapi_blueprint, client
 
 SUB_API = 'task'
@@ -23,7 +23,7 @@ def get_task(client_info):
     {'keep_alive': true}
     """
     try:
-        return make_api_response(client.task.get_task(client_info, request.headers))
+        return make_api_response(client.get_task(client_info, request.headers))
     except KeyError:
         return make_api_response({}, "The service you're asking task for does not exist, try later", 404)
 
@@ -49,7 +49,7 @@ def task_finished(client_info):
     }
     """
     try:
-        response = client.task.task_finished(client_info, request.json)
+        response = client.task_finished(client_info, request.json)
         if response:
             return make_api_response(response)
         return make_api_response("", "No result or error provided by service.", 400)

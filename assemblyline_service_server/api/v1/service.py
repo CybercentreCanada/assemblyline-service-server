@@ -1,4 +1,4 @@
-from assemblyline_core.tasking.helper.response import make_api_response
+from assemblyline_service_server.helper.response import make_api_response
 from flask import request
 from assemblyline_service_server.api.base import api_login, make_subapi_blueprint, client
 
@@ -20,6 +20,6 @@ def register_service(client_info):
     {'keep_alive': true}
     """
     try:
-        return make_api_response(client.service.register_service(client_info, request.json))
+        return make_api_response(client.register_service(client_info, request.json))
     except ValueError as e:
         return make_api_response("", err=e, status_code=400)
