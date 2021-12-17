@@ -1,15 +1,14 @@
 import os
 import shutil
 import tempfile
+from assemblyline_core.tasking_client import TaskingClientException
 
 from flask import request
 
-from assemblyline.common import identify
-from assemblyline.common.isotime import now_as_iso
 from assemblyline.filestore import FileStoreException
 from assemblyline_service_server.helper.response import make_api_response, stream_file_response
 from assemblyline_service_server.api.base import make_subapi_blueprint, api_login
-from assemblyline_service_server.config import FILESTORE, LOGGER, STORAGE, config
+from assemblyline_service_server.config import FILESTORE, LOGGER, TASKING_CLIENT
 
 SUB_API = 'file'
 file_api = make_subapi_blueprint(SUB_API, api_version=1)
@@ -90,34 +89,13 @@ def upload_file(client_info):
         else:
             shutil.copyfileobj(request.stream, temp_file)
 
-        # Identify the file info of the uploaded file
-        file_info = identify.fileinfo(temp_file.name)
+        try:
+            TASKING_CLIENT.upload_file(temp_file.name, classification, ttl, is_section_image, expected_sha256=sha256)
+        except TaskingClientException as e:
+            LOGGER.warning(f"{client_info['client_id']} - {client_info['service_name']}: {str(e)}")
+            return make_api_response(dict(success=False), err=str(e), status_code=400)
 
-        # Validate SHA256 of the uploaded file
-        if sha256 == file_info['sha256']:
-            file_info['archive_ts'] = now_as_iso(config.datastore.ilm.days_until_archive * 24 * 60 * 60)
-            file_info['classification'] = classification
-            if ttl:
-                file_info['expiry_ts'] = now_as_iso(ttl * 24 * 60 * 60)
-            else:
-                file_info['expiry_ts'] = None
-
-            # Update the datastore with the uploaded file
-            STORAGE.save_or_freshen_file(file_info['sha256'], file_info, file_info['expiry_ts'],
-                                         file_info['classification'], is_section_image=is_section_image)
-
-            # Upload file to the filestore (upload already checks if the file exists)
-            FILESTORE.upload(temp_file.name, file_info['sha256'])
-        else:
-            LOGGER.warning(f"{client_info['client_id']} - {client_info['service_name']} "
-                           f"uploaded file (SHA256: {file_info['sha256']}) doesn't match "
-                           f"expected file (SHA256: {sha256})")
-            return make_api_response(dict(success=False),
-                                     err=f"Uploaded file does not match expected "
-                                         f"file hash. [{file_info['sha256']} != {sha256}]",
-                                     status_code=400)
-
-    LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']} "
-                f"successfully uploaded file (SHA256: {file_info['sha256']})")
+    LOGGER.info(f"{client_info['client_id']} - {client_info['service_name']}: "
+                f"Successfully uploaded file (SHA256: {sha256})")
 
     return make_api_response(dict(success=True))
