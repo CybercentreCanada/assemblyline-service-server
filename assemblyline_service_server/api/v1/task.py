@@ -1,7 +1,13 @@
+import time
+from assemblyline_core.tasking_client import ServiceMissingException
+
 from flask import request
 
+from assemblyline_service_server.api.base import api_login, make_subapi_blueprint
+from assemblyline_service_server.config import TASKING_CLIENT
 from assemblyline_service_server.helper.response import make_api_response
-from assemblyline_service_server.api.base import api_login, make_subapi_blueprint, client
+from assemblyline_service_server.helper.metrics import get_metrics_factory
+
 
 SUB_API = 'task'
 task_api = make_subapi_blueprint(SUB_API, api_version=1)
@@ -22,10 +28,32 @@ def get_task(client_info):
     Result example:
     {'keep_alive': true}
     """
-    try:
-        return make_api_response(client.get_task(client_info, request.headers))
-    except KeyError:
-        return make_api_response({}, "The service you're asking task for does not exist, try later", 404)
+    service_name = client_info['service_name']
+    service_version = client_info['service_version']
+    service_tool_version = client_info['service_tool_version']
+    client_id = client_info['client_id']
+    remaining_time = timeout = int(float(request.headers.get('timeout', 30)))
+    metric_factory = get_metrics_factory(service_name)
+
+    start_time = time.time()
+
+    while remaining_time > 0:
+        try:
+            task, retry = TASKING_CLIENT.get_task(client_id, service_name, service_version, service_tool_version,
+                                                  start_time + timeout, metric_factory, remaining_time)
+        except ServiceMissingException as e:
+            return make_api_response({}, str(e), 404)
+
+        if task is not None:
+            return make_api_response(dict(task=task.as_primitives()))
+        elif not retry:
+            return make_api_response(dict(task=False))
+
+        # Recalculating how much time we have left before we reach the timeout
+        remaining_time = start_time + timeout - time.time()
+
+    # We've been processing cache hit for the length of the timeout... bailing out!
+    return make_api_response(dict(task=False))
 
 
 @task_api.route("/", methods=["POST"])
@@ -49,9 +77,11 @@ def task_finished(client_info):
     }
     """
     try:
-        response = client.task_finished(client_info, request.json)
+        service_name = client_info['service_name']
+        response = TASKING_CLIENT.task_finished(request.json, client_info['client_id'], service_name,
+                                                get_metrics_factory(service_name))
         if response:
             return make_api_response(response)
         return make_api_response("", "No result or error provided by service.", 400)
-    except ValueError as e:
+    except ValueError as e:  # Catch errors when building Task or Result model
         return make_api_response("", e, 400)

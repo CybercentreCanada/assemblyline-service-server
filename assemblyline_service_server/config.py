@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 
 from assemblyline.common import forge
 from assemblyline.common import log as al_log
@@ -44,6 +45,7 @@ LOGGER.debug('Logger ready!')
 
 STORAGE = forge.get_datastore(config=config)
 FILESTORE = forge.get_filestore(config=config)
+LOCK = threading.Lock()
 TASKING_CLIENT = TaskingClient(datastore=STORAGE, filestore=FILESTORE)
 SAFELIST_CLIENT = SafelistClient(datastore=STORAGE)
 # End global
