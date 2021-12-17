@@ -7,7 +7,6 @@ from assemblyline.odm import randomizer
 from assemblyline.odm.models.safelist import Safelist
 from assemblyline_service_server import app
 from assemblyline_service_server.config import AUTH_KEY
-from assemblyline_core.tasking_client import TaskingClient
 
 headers = {
     'Container-Id': randomizer.get_random_hash(12),
@@ -23,7 +22,7 @@ headers = {
 @pytest.fixture(scope='function')
 def storage():
     ds = MagicMock()
-    with patch('assemblyline_service_server.config.TASKING_CLIENT.datastore', ds):
+    with patch('assemblyline_service_server.config.SAFELIST_CLIENT.datastore', ds):
         yield ds
 
 
