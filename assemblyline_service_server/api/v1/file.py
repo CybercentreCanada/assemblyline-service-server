@@ -50,9 +50,9 @@ def download_file(sha256, client_info):
 
 @file_api.route("/", methods=["PUT"])
 @api_login()
-def upload_files(client_info):
+def upload_file(client_info):
     """
-    Upload multiple files.
+    Upload a single file.
 
     Variables:
     None
@@ -61,19 +61,10 @@ def upload_files(client_info):
     None
 
     Data Block:
-    {<file #1 sha256>: {'classification': 'U',
-                        'ttl': 15
-                       },
-     <file #2 sha256>: {'classification': 'U',
-                        'ttl': 15
-                       }
-    }
+    None
 
     Files:
-
-    4-tuple ('filename', fileobj, 'content_type', custom_headers),
-    where 'content-type' is a string defining the content type of the given file
-    and custom_headers a dict-like object containing additional headers to add for the file.
+    Multipart file obj stored in the "file" key.
 
     API call example:
     PUT /api/v1/file/
