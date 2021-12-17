@@ -1,8 +1,8 @@
 import time
-from assemblyline_core.tasking_client import ServiceMissingException
 
 from flask import request
 
+from assemblyline_core.tasking_client import ServiceMissingException
 from assemblyline_service_server.api.base import api_login, make_subapi_blueprint
 from assemblyline_service_server.config import TASKING_CLIENT
 from assemblyline_service_server.helper.response import make_api_response
