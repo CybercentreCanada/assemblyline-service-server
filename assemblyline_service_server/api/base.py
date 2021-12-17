@@ -3,7 +3,7 @@ import functools
 import elasticapm
 from flask import Blueprint, current_app, request
 
-from assemblyline_service_server.config import AUTH_KEY, LOGGER, config, TASKING_CLIENT as client
+from assemblyline_service_server.config import AUTH_KEY, LOGGER, config
 from assemblyline_service_server.helper.response import make_api_response
 
 API_PREFIX = "/api"
