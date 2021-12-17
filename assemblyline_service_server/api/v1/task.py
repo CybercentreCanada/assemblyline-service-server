@@ -36,11 +36,13 @@ def get_task(client_info):
     metric_factory = get_metrics_factory(service_name)
 
     start_time = time.time()
+    status_expiry = start_time + timeout
 
     while remaining_time > 0:
         try:
-            task, retry = TASKING_CLIENT.get_task(client_id, service_name, service_version, service_tool_version,
-                                                  start_time + timeout, metric_factory, remaining_time)
+            task, retry = TASKING_CLIENT.get_task(
+                client_id, service_name, service_version, service_tool_version, metric_factory,
+                status_expiry=status_expiry, timeout=remaining_time)
         except ServiceMissingException as e:
             return make_api_response({}, str(e), 404)
 
