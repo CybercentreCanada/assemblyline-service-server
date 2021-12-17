@@ -1,13 +1,11 @@
 import logging
 import os
 
-from typing import Any, Dict, cast
-
 from assemblyline.common import forge
 from assemblyline.common import log as al_log
 from assemblyline.common.version import BUILD_MINOR, FRAMEWORK_VERSION, SYSTEM_VERSION
-from assemblyline.odm.models.heuristic import Heuristic
 from assemblyline.remote.datatypes.counters import Counters
+from assemblyline_core.safelist_client import SafelistClient
 from assemblyline_core.tasking_client import TaskingClient
 
 config = forge.get_config()
@@ -47,5 +45,6 @@ LOGGER.debug('Logger ready!')
 STORAGE = forge.get_datastore(config=config)
 FILESTORE = forge.get_filestore(config=config)
 TASKING_CLIENT = TaskingClient(datastore=STORAGE, filestore=FILESTORE)
+SAFELIST_CLIENT = SafelistClient(datastore=STORAGE)
 # End global
 #################################################################

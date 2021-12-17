@@ -1,7 +1,8 @@
 from flask import request
 
+from assemblyline_service_server.api.base import api_login, make_subapi_blueprint
+from assemblyline_service_server.config import SAFELIST_CLIENT
 from assemblyline_service_server.helper.response import make_api_response
-from assemblyline_service_server.api.base import api_login, make_subapi_blueprint, client
 
 SUB_API = 'safelist'
 safelist_api = make_subapi_blueprint(SUB_API, api_version=1)
@@ -29,7 +30,7 @@ def exists(qhash, **_):
     Result example:
     <Safelisting object>
     """
-    safelist = client.exists(qhash, **_)
+    safelist = SAFELIST_CLIENT.exists(qhash)
     if safelist:
         return make_api_response(safelist)
     return make_api_response(None, "The hash was not found in the safelist.", 404)
@@ -37,9 +38,9 @@ def exists(qhash, **_):
 
 @safelist_api.route("/", methods=["GET"])
 @api_login()
-def get_safelist_for_tags(**_):
+def get_safelisted_tags(**_):
     """
-    Get the safelist for a given list of tags
+    Get all the safelisted tags in the system
 
     Variables:
     tags       =>  List of tag types (comma seperated)
@@ -66,14 +67,14 @@ def get_safelist_for_tags(**_):
     }
     """
     tag_types = request.args.get('tag_types', None)
-    return make_api_response(client.get_safelist_for_tags(tag_types, **_))
+    return make_api_response(SAFELIST_CLIENT.get_safelisted_tags(tag_types))
 
 
 @safelist_api.route("/signatures/", methods=["GET"])
 @api_login()
-def get_safelist_for_signatures(**_):
+def get_safelisted_signatures(**_):
     """
-    Get the safelist for all heuristic's signatures
+    Get all the signatures that were safelisted in the system.
 
     Variables:
     None
@@ -90,4 +91,4 @@ def get_safelist_for_signatures(**_):
     Result example:
     ["McAfee.Eicar", "Avira.Eicar", ...]
     """
-    return make_api_response(client.get_safelist_for_signatures(**_))
+    return make_api_response(SAFELIST_CLIENT.get_safelisted_signatures())
