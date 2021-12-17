@@ -47,7 +47,7 @@ def get_task(client_info):
             return make_api_response({}, str(e), 404)
 
         if task is not None:
-            return make_api_response(dict(task=task.as_primitives()))
+            return make_api_response(dict(task=task))
         elif not retry:
             return make_api_response(dict(task=False))
 
