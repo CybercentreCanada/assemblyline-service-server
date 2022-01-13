@@ -1,10 +1,8 @@
-import yaml
-
 from flask import request
 
-from assemblyline.common import forge
-from assemblyline_service_server.api.base import api_login, make_api_response, make_subapi_blueprint
-from assemblyline_service_server.config import STORAGE, config
+from assemblyline_service_server.api.base import api_login, make_subapi_blueprint
+from assemblyline_service_server.config import SAFELIST_CLIENT
+from assemblyline_service_server.helper.response import make_api_response
 
 SUB_API = 'safelist'
 safelist_api = make_subapi_blueprint(SUB_API, api_version=1)
@@ -32,18 +30,17 @@ def exists(qhash, **_):
     Result example:
     <Safelisting object>
     """
-    safelist = STORAGE.safelist.get_if_exists(qhash, as_obj=False)
+    safelist = SAFELIST_CLIENT.exists(qhash)
     if safelist:
         return make_api_response(safelist)
-
     return make_api_response(None, "The hash was not found in the safelist.", 404)
 
 
 @safelist_api.route("/", methods=["GET"])
 @api_login()
-def get_safelist_for_tags(**_):
+def get_safelisted_tags(**_):
     """
-    Get the safelist for a given list of tags
+    Get all the safelisted tags in the system
 
     Variables:
     tags       =>  List of tag types (comma seperated)
@@ -69,41 +66,15 @@ def get_safelist_for_tags(**_):
         }
     }
     """
-    tag_types = request.args.get('tags', None)
-    if tag_types:
-        tag_types = tag_types.split(',')
-
-    with forge.get_cachestore('system', config=config, datastore=STORAGE) as cache:
-        tag_safelist_yml = cache.get('tag_safelist_yml')
-        if tag_safelist_yml:
-            tag_safelist_data = yaml.safe_load(tag_safelist_yml)
-        else:
-            tag_safelist_data = forge.get_tag_safelist_data()
-
-    if tag_types:
-        output = {
-            'match': {k: v for k, v in tag_safelist_data.get('match', {}).items() if k in tag_types or tag_types == []},
-            'regex': {k: v for k, v in tag_safelist_data.get('regex', {}).items() if k in tag_types or tag_types == []},
-        }
-        for tag in tag_types:
-            for sl in STORAGE.safelist.stream_search(f"type:tag AND enabled:true AND tag.type:{tag}", as_obj=False):
-                output['match'].setdefault(sl['tag']['type'], [])
-                output['match'][sl['tag']['type']].append(sl['tag']['value'])
-
-    else:
-        output = tag_safelist_data
-        for sl in STORAGE.safelist.stream_search("type:tag AND enabled:true", as_obj=False):
-            output['match'].setdefault(sl['tag']['type'], [])
-            output['match'][sl['tag']['type']].append(sl['tag']['value'])
-
-    return make_api_response(output)
+    tag_types = request.args.get('tag_types', None)
+    return make_api_response(SAFELIST_CLIENT.get_safelisted_tags(tag_types))
 
 
 @safelist_api.route("/signatures/", methods=["GET"])
 @api_login()
-def get_safelist_for_signatures(**_):
+def get_safelisted_signatures(**_):
     """
-    Get the safelist for all heuristic's signatures
+    Get all the signatures that were safelisted in the system.
 
     Variables:
     None
@@ -120,9 +91,4 @@ def get_safelist_for_signatures(**_):
     Result example:
     ["McAfee.Eicar", "Avira.Eicar", ...]
     """
-    output = [
-        item['signature']['name']
-        for item in STORAGE.safelist.stream_search(
-            "type:signature AND enabled:true", fl="signature.name", as_obj=False)]
-
-    return make_api_response(output)
+    return make_api_response(SAFELIST_CLIENT.get_safelisted_signatures())

@@ -10,6 +10,7 @@ from assemblyline.odm.models.service import Service
 from assemblyline.odm import randomizer
 from assemblyline_service_server.config import AUTH_KEY
 from assemblyline_service_server import app
+from assemblyline_core.tasking_client import TaskingClient
 
 
 headers = {
@@ -29,7 +30,7 @@ def client():
 @pytest.fixture(scope='function')
 def storage():
     ds = MagicMock()
-    with patch('assemblyline_service_server.api.v1.service.STORAGE', ds):
+    with patch('assemblyline_service_server.config.TASKING_CLIENT.datastore', ds):
         yield ds
 
 

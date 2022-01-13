@@ -32,7 +32,10 @@ resources:
       type: github
       endpoint: github-repo-sa
       name: CybercentreCanada/assemblyline-base
-
+    - repository: assemblyline-core
+      type: github
+      endpoint: github-repo-sa
+      name: CybercentreCanada/assemblyline-core
 jobs:
   - job: run_test
     strategy:
@@ -57,6 +60,8 @@ jobs:
         displayName: Checkout assemblyline-service-server
       - checkout: assemblyline-base
         displayName: Checkout assemblyline-base
+      - checkout: assemblyline-core
+        displayName: Checkout assemblyline-core
       - script: |
           sudo mkdir -p /etc/assemblyline/
           sudo mkdir -p /var/cache/assemblyline/
@@ -76,6 +81,14 @@ jobs:
           sudo env "PATH=$PATH" python -m pip install --no-cache-dir -e .
         displayName: Install assemblyline
         workingDirectory: $(Pipeline.Workspace)/s/assemblyline-base
+      - script: |
+          # Try to checkout the matching branch, if the command fails, don't care.
+          export BRANCH_NAME=$(basename -- "$SYSTEM_PULLREQUEST_SOURCEBRANCH")
+          export BRANCH_NAME=${BRANCH_NAME:-"$BUILD_SOURCEBRANCHNAME"}
+          git checkout -b $BRANCH_NAME -t origin/$BRANCH_NAME || true
+          sudo env "PATH=$PATH" python -m pip install --no-cache-dir -e .
+        displayName: Install assemblyline-core
+        workingDirectory: $(Pipeline.Workspace)/s/assemblyline-core
       - script: |
           sudo env "PATH=$PATH" python -m pip install --no-cache-dir -r test/requirements.txt
           sudo env "PATH=$PATH" python -m pip install --no-cache-dir -e .
