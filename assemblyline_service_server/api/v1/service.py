@@ -24,7 +24,9 @@ def register_service(client_info):
     }
     """
     try:
-        output = TASKING_CLIENT.register_service(request.json, log_prefix=f"{client_info['client_id']} - ")
+        output = TASKING_CLIENT.register_service(
+            request.get_json(force=True, silent=True),
+            log_prefix=f"{client_info['client_id']} - ")
         return make_api_response(output)
     except ValueError as e:
         return make_api_response("", err=e, status_code=400)

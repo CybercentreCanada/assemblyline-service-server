@@ -80,8 +80,10 @@ def task_finished(client_info):
     """
     try:
         service_name = client_info['service_name']
-        response = TASKING_CLIENT.task_finished(request.json, client_info['client_id'], service_name,
-                                                get_metrics_factory(service_name))
+        response = TASKING_CLIENT.task_finished(
+            request.get_json(force=True, silent=True),
+            client_info['client_id'],
+            service_name, get_metrics_factory(service_name))
         if response:
             return make_api_response(response)
         return make_api_response("", "No result or error provided by service.", 400)
