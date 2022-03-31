@@ -1,4 +1,5 @@
 from flask import request
+from werkzeug.exceptions import BadRequest
 
 from assemblyline_service_server.api.base import api_login, make_subapi_blueprint
 from assemblyline_service_server.config import TASKING_CLIENT
@@ -28,3 +29,5 @@ def register_service(client_info):
         return make_api_response(output)
     except ValueError as e:
         return make_api_response("", err=e, status_code=400)
+    except BadRequest:
+        return make_api_response("", "Data received not in JSON format.", 400)
