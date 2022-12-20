@@ -3,6 +3,7 @@ import logging
 from elasticapm.contrib.flask import ElasticAPM
 from flask import Flask
 from flask.logging import default_handler
+from os import environ
 
 from assemblyline.common import forge, log as al_log
 from assemblyline_service_server.api.v1.file import file_api
@@ -17,6 +18,12 @@ config = forge.get_config()
 al_log.init_logging('svc')
 LOGGER = logging.getLogger('assemblyline.svc_server')
 LOGGER.info("Service server ready to receive connections...")
+ssl_context = None
+if config.system.internal_encryption.enabled:
+    ssl_context = (
+        environ.get('SERVICE_SERVER_CLIENT_CERT_PATH', '/etc/assemblyline/ssl/service-server.crt'),
+        environ.get('SERVICE_SERVER_CLIENT_KEY_PATH', '/etc/assemblyline/ssl/service-server.key')
+    )
 
 # Prepare the app
 app = Flask('svc-server')
@@ -46,4 +53,4 @@ if __name__ == '__main__':
     for h in LOGGER.parent.handlers:
         wlog.addHandler(h)
 
-    app.run(host='0.0.0.0', port=5003, debug=config.logging.log_level == 'DEBUG')
+    app.run(host='0.0.0.0', port=5003, debug=config.logging.log_level == 'DEBUG', ssl_context=ssl_context)
