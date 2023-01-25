@@ -3,7 +3,7 @@ import logging
 from elasticapm.contrib.flask import ElasticAPM
 from flask import Flask
 from flask.logging import default_handler
-from os import environ
+from os import environ, path
 
 from assemblyline.common import forge, log as al_log
 from assemblyline_service_server.api.v1.file import file_api
@@ -13,17 +13,20 @@ from assemblyline_service_server.api.v1.safelist import safelist_api
 from assemblyline_service_server.healthz import healthz
 
 config = forge.get_config()
+CERT_BUNDLE = (
+    # If internal encryption is enabled on deployment
+    environ.get('SERVICE_SERVER_CLIENT_CERT_PATH', '/etc/assemblyline/ssl/service-server/tls.crt'),
+    environ.get('SERVICE_SERVER_CLIENT_KEY_PATH', '/etc/assemblyline/ssl/service-server/tls.key')
+)
 
 # Prepare the logger
 al_log.init_logging('svc')
 LOGGER = logging.getLogger('assemblyline.svc_server')
 LOGGER.info("Service server ready to receive connections...")
 ssl_context = None
-if config.system.internal_encryption.enabled:
-    ssl_context = (
-        environ.get('SERVICE_SERVER_CLIENT_CERT_PATH', '/etc/assemblyline/ssl/service-server.crt'),
-        environ.get('SERVICE_SERVER_CLIENT_KEY_PATH', '/etc/assemblyline/ssl/service-server.key')
-    )
+if all([path.exists(fp) for fp in CERT_BUNDLE]):
+    # If all files required are present, start up encrypted comms
+    ssl_context = CERT_BUNDLE
 
 # Prepare the app
 app = Flask('svc-server')
