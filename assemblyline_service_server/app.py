@@ -47,7 +47,7 @@ for ph in LOGGER.parent.handlers:
 # Setup APMs
 if config.core.metrics.apm_server.server_url is not None:
     app.logger.info(f"Exporting application metrics to: {config.core.metrics.apm_server.server_url}")
-    ElasticAPM(app, server_url=config.core.metrics.apm_server.server_url, service_name="al_svc_server")
+    ElasticAPM(app, client=forge.get_apm_client("al_svc_server"))
 
 
 if __name__ == '__main__':
