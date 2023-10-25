@@ -36,29 +36,32 @@ def exists(qhash, **_):
     return make_api_response(None, "The hash was not found in the badlist.", 404)
 
 
-@badlist_api.route("/", methods=["GET"])
+@badlist_api.route("/tags/", methods=["POST"])
 @api_login()
-def get_badlisted_tags(**_):
+def tags_exists(**_):
     """
-    Get all the badlisted tags in the system
+    Check if the provided tags exists in the badlist
 
     Variables:
-    tags       =>  List of tag types (comma seperated)
+    None
 
     Arguments:
     None
 
     Data Block:
-    None
+    { # Dictionary of types -> values to check if exists
+        "file.synamic.domain": [...],
+        "network.static.ip": [...]
+    }
 
     API call example:
-    GET /api/v1/badlist/?tags=network.static.domain,network.dynamic.domain
+    GET /api/v1/badlist/tags/
 
     Result example:
-    {  # List of direct matches by tag type
-       "network.static.domain": ["domain.bad"],
-       "network.dynamic.domain": ["updates.micros0ft.com"]
-    }
+    [ # List of existing objecs
+        <badlisting object>,
+        <Badlisting object>
+    ]
     """
-    tag_types = request.args.get('tag_types', None)
-    return make_api_response(BADLIST_CLIENT.get_badlisted_tags(tag_types))
+    data = request.json
+    return make_api_response(BADLIST_CLIENT.exists_tags(data))
