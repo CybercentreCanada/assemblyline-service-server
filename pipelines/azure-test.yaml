@@ -13,7 +13,7 @@ resources:
       ports:
         - 6379:6379
     - container: elasticsearch
-      image: cccs/elasticsearch:7.17.4
+      image: cccs/elasticsearch:8.10.2
       env:
         ES_JAVA_OPTS: "-Xms256m -Xmx512m"
         DISCOVERY_TYPE: "single-node"
@@ -79,6 +79,7 @@ jobs:
           export BRANCH_NAME=$(basename -- "$SYSTEM_PULLREQUEST_SOURCEBRANCH")
           export BRANCH_NAME=${BRANCH_NAME:-"$BUILD_SOURCEBRANCHNAME"}
           git checkout -b $BRANCH_NAME -t origin/$BRANCH_NAME || true
+          sudo env "PATH=$PATH" python -m pip install --no-cache-dir -U pip cython setuptools wheel
           sudo env "PATH=$PATH" python -m pip install --no-cache-dir -e .
         displayName: Install assemblyline
         workingDirectory: $(Pipeline.Workspace)/s/assemblyline-base
