@@ -59,7 +59,11 @@ def similar_ssdeep(**_):
     Result example:
     <Badlisting object>
     """
-    badlist = BADLIST_CLIENT.find_similar_ssdeep(request.json.get('ssdeep', None))
+    ssdeep = request.json.get('ssdeep', None)
+    if not ssdeep:
+        return make_api_response(None, "You must provide an ssdeep value", 400)
+
+    badlist = BADLIST_CLIENT.find_similar_ssdeep(ssdeep)
     if badlist:
         return make_api_response(badlist)
     return make_api_response(None, "The hash was not found in the badlist.", 404)
@@ -88,7 +92,11 @@ def similar_tlsh(**_):
     Result example:
     <Badlisting object>
     """
-    badlist = BADLIST_CLIENT.find_similar_tlsh(request.json.get('tlsh', None))
+    tlsh = request.json.get('tlsh', None)
+    if not tlsh:
+        return make_api_response(None, "You must provide a tlsh value", 400)
+
+    badlist = BADLIST_CLIENT.find_similar_tlsh(tlsh)
     if badlist:
         return make_api_response(badlist)
     return make_api_response(None, "The hash was not found in the badlist.", 404)
@@ -108,7 +116,7 @@ def tags_exists(**_):
 
     Data Block:
     { # Dictionary of types -> values to check if exists
-        "file.synamic.domain": [...],
+        "network.dynamic.domain": [...],
         "network.static.ip": [...]
     }
 
