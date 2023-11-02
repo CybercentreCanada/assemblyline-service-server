@@ -7,6 +7,7 @@ from assemblyline.common import log as al_log
 from assemblyline.common.version import BUILD_MINOR, FRAMEWORK_VERSION, SYSTEM_VERSION
 from assemblyline.remote.datatypes.counters import Counters
 from assemblyline.remote.datatypes import get_client
+from assemblyline_core.badlist_client import BadlistClient
 from assemblyline_core.safelist_client import SafelistClient
 from assemblyline_core.tasking_client import TaskingClient
 
@@ -59,5 +60,6 @@ FILESTORE = forge.get_filestore(config=config)
 LOCK = threading.Lock()
 TASKING_CLIENT = TaskingClient(datastore=STORAGE, filestore=FILESTORE, redis=redis, redis_persist=redis_persist)
 SAFELIST_CLIENT = SafelistClient(datastore=STORAGE)
+BADLIST_CLIENT = BadlistClient(datastore=STORAGE)
 # End global
 #################################################################
