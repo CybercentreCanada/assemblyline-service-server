@@ -36,6 +36,64 @@ def exists(qhash, **_):
     return make_api_response(None, "The hash was not found in the badlist.", 404)
 
 
+@badlist_api.route("/ssdeep/", methods=["POST"])
+@api_login()
+def similar_ssdeep(**_):
+    """
+    Check if a file with a similar SSDeep exists.
+
+    Variables:
+    None
+
+    Arguments:
+    None
+
+    Data Block:
+    {
+        ssdeep : value    => Hash to check
+    }
+
+    API call example:
+    GET /api/v1/badlist/ssdeep/
+
+    Result example:
+    <Badlisting object>
+    """
+    badlist = BADLIST_CLIENT.find_similar_ssdeep(request.json.get('ssdeep', None))
+    if badlist:
+        return make_api_response(badlist)
+    return make_api_response(None, "The hash was not found in the badlist.", 404)
+
+
+@badlist_api.route("/tlsh/", methods=["POST"])
+@api_login()
+def similar_tlsh(**_):
+    """
+    Check if a file with a similar TLSH exists.
+
+    Variables:
+    None
+
+    Arguments:
+    None
+
+    Data Block:
+    {
+        tlsh : value    => Hash to check
+    }
+
+    API call example:
+    GET /api/v1/badlist/tlsh/
+
+    Result example:
+    <Badlisting object>
+    """
+    badlist = BADLIST_CLIENT.find_similar_tlsh(request.json.get('tlsh', None))
+    if badlist:
+        return make_api_response(badlist)
+    return make_api_response(None, "The hash was not found in the badlist.", 404)
+
+
 @badlist_api.route("/tags/", methods=["POST"])
 @api_login()
 def tags_exists(**_):
