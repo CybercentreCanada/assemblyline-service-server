@@ -55,22 +55,45 @@ def test_badlist_missing(client, storage):
 
 
 # noinspection PyUnusedLocal
-def test_get_full_badlist(client, storage):
-    storage.badlist.stream_search.return_value = []
+def test_badlist_exists_tags(client, storage):
+    response_item = randomizer.random_model_obj(Badlist, as_json=True)
+    valid_resp = {'items': [response_item]}
+    storage.badlist.search.return_value = valid_resp
 
-    resp = client.get('/api/v1/badlist/', headers=headers)
+    data = {"network.dynamic.domain": ["cse-cst.gc.ca", "cyber.gc.ca"]}
+    resp = client.post('/api/v1/badlist/tags/', headers=headers, json=data)
     assert resp.status_code == 200
-    assert isinstance(resp.json['api_response'], dict)
+    assert isinstance(resp.json['api_response'], list)
 
+    for item in resp.json['api_response']:
+        assert item == response_item
 
 # noinspection PyUnusedLocal
-def test_get_full_badlist_specific(client, storage):
-    storage.badlist.stream_search.return_value = []
 
-    tag_type = "network.dynamic.domain"
-    resp = client.get(f'/api/v1/badlist/?tag_types={tag_type}', headers=headers)
+
+def test_badlist_similar_tlsh(client, storage):
+    response_item = randomizer.random_model_obj(Badlist, as_json=True)
+    valid_resp = {'items': [response_item]}
+    storage.badlist.search.return_value = valid_resp
+
+    data = {"tlsh": "TLSH_HASH_FAKE"}
+    resp = client.post('/api/v1/badlist/tlsh/', headers=headers, json=data)
     assert resp.status_code == 200
-    assert isinstance(resp.json['api_response'], dict)
+    assert isinstance(resp.json['api_response'], list)
 
-    for k in resp.json['api_response']:
-        assert k == tag_type
+    for item in resp.json['api_response']:
+        assert item == response_item
+
+
+def test_badlist_similar_ssdeep(client, storage):
+    response_item = randomizer.random_model_obj(Badlist, as_json=True)
+    valid_resp = {'items': [response_item]}
+    storage.badlist.search.return_value = valid_resp
+
+    data = {"ssdeep": "0:fake:ssdeep"}
+    resp = client.post('/api/v1/badlist/ssdeep/', headers=headers, json=data)
+    assert resp.status_code == 200
+    assert isinstance(resp.json['api_response'], list)
+
+    for item in resp.json['api_response']:
+        assert item == response_item
