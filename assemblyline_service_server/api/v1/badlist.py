@@ -61,12 +61,12 @@ def similar_ssdeep(**_):
     """
     ssdeep = request.json.get('ssdeep', None)
     if not ssdeep:
-        return make_api_response(None, "You must provide an ssdeep value", 400)
+        return make_api_response([], "You must provide an ssdeep value", 400)
 
     badlist = BADLIST_CLIENT.find_similar_ssdeep(ssdeep)
     if badlist:
         return make_api_response(badlist)
-    return make_api_response(None, "The hash was not found in the badlist.", 404)
+    return make_api_response([], "The hash was not found in the badlist.", 404)
 
 
 @badlist_api.route("/tlsh/", methods=["POST"])
@@ -94,12 +94,12 @@ def similar_tlsh(**_):
     """
     tlsh = request.json.get('tlsh', None)
     if not tlsh:
-        return make_api_response(None, "You must provide a tlsh value", 400)
+        return make_api_response([], "You must provide a tlsh value", 400)
 
     badlist = BADLIST_CLIENT.find_similar_tlsh(tlsh)
     if badlist:
         return make_api_response(badlist)
-    return make_api_response(None, "The hash was not found in the badlist.", 404)
+    return make_api_response([], "The hash was not found in the badlist.", 404)
 
 
 @badlist_api.route("/tags/", methods=["POST"])
