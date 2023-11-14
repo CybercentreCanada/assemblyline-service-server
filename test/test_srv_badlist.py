@@ -32,7 +32,6 @@ def client():
     yield client
 
 
-# noinspection PyUnusedLocal
 def test_badlist_exist(client, storage):
     valid_hash = randomizer.get_random_hash(64)
     valid_resp = randomizer.random_model_obj(Badlist, as_json=True)
@@ -44,7 +43,6 @@ def test_badlist_exist(client, storage):
     assert resp.json['api_response'] == valid_resp
 
 
-# noinspection PyUnusedLocal
 def test_badlist_missing(client, storage):
     invalid_hash = randomizer.get_random_hash(64)
     storage.badlist.get_if_exists.return_value = None
@@ -54,7 +52,6 @@ def test_badlist_missing(client, storage):
     assert resp.json['api_response'] is None
 
 
-# noinspection PyUnusedLocal
 def test_badlist_exists_tags(client, storage):
     response_item = randomizer.random_model_obj(Badlist, as_json=True)
     valid_resp = {'items': [response_item]}
@@ -67,8 +64,6 @@ def test_badlist_exists_tags(client, storage):
 
     for item in resp.json['api_response']:
         assert item == response_item
-
-# noinspection PyUnusedLocal
 
 
 def test_badlist_similar_tlsh(client, storage):
