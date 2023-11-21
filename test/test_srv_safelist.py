@@ -9,7 +9,7 @@ from assemblyline_service_server import app
 from assemblyline_service_server.config import AUTH_KEY
 
 headers = {
-    'Container-Id': randomizer.get_random_hash(12),
+    'Container-ID': randomizer.get_random_hash(12),
     'X-APIKey': AUTH_KEY,
     'Service-Name': 'Safelist',
     'Service-Version': randomizer.get_random_service_version(),
