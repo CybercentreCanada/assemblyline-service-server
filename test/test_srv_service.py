@@ -14,7 +14,7 @@ from assemblyline_core.tasking_client import TaskingClient
 
 
 headers = {
-    'Container-Id': randomizer.get_random_hash(12),
+    'Container-ID': randomizer.get_random_hash(12),
     'X-APIKey': AUTH_KEY,
     'Service-Tool-Version': randomizer.get_random_hash(64),
     'X-Forwarded-For': '127.0.0.1',

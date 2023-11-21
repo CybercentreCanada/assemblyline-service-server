@@ -79,6 +79,7 @@ jobs:
           export BRANCH_NAME=$(basename -- "$SYSTEM_PULLREQUEST_SOURCEBRANCH")
           export BRANCH_NAME=${BRANCH_NAME:-"$BUILD_SOURCEBRANCHNAME"}
           git checkout -b $BRANCH_NAME -t origin/$BRANCH_NAME || true
+          sudo env "PATH=$PATH" python -m pip install --no-cache-dir -U pip cython setuptools wheel
           sudo env "PATH=$PATH" python -m pip install --no-cache-dir -e .
         displayName: Install assemblyline
         workingDirectory: $(Pipeline.Workspace)/s/assemblyline-base
