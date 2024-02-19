@@ -16,7 +16,7 @@ def client():
 
 
 headers = {
-    'Container-Id': randomizer.get_random_hash(12),
+    'Container-ID': randomizer.get_random_hash(12),
     'X-APIKey': AUTH_KEY,
     'Service-Name': randomizer.get_random_service_name(),
     'Service-Version': randomizer.get_random_service_version(),
