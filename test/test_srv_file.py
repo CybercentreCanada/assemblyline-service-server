@@ -77,6 +77,31 @@ def test_upload_new_file(client, file_datastore):
     finally:
         fs.delete(file_hash)
 
+def test_upload_section_image(client, file_datastore):
+    fs = forge.get_filestore()
+
+    file_size = 10003
+    file_data = b'x'*file_size
+    file_hash = hashlib.sha256(file_data).hexdigest()
+
+    fs.delete(file_hash)
+
+    file_headers = dict(headers)
+    file_headers['sha256'] = file_hash
+    file_headers['classification'] = 'U'
+    file_headers['ttl'] = 1
+    file_headers['Content-Type'] = 'application/octet-stream'
+    file_headers['Is-Section-Image'] = 'true'
+
+    try:
+        response = client.put('/api/v1/file/', headers=file_headers, data=file_data)
+        assert response.status_code == 200
+        assert fs.exists(file_hash)
+        assert file_datastore.save_or_freshen_file.call_count == 1
+        assert file_datastore.file.get("sha256").is_section_image
+    finally:
+        fs.delete(file_hash)
+
 
 def test_upload_file_bad_hash(client, file_datastore):
     fs = forge.get_filestore()
