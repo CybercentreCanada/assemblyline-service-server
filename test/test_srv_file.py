@@ -91,7 +91,7 @@ def test_upload_section_image(client, file_datastore):
     file_headers['classification'] = 'U'
     file_headers['ttl'] = 1
     file_headers['Content-Type'] = 'application/octet-stream'
-    file_headers['is_section_image'] = 'true'
+    file_headers['Is-Section-Image'] = 'true'
 
     try:
         response = client.put('/api/v1/file/', headers=file_headers, data=file_data)
