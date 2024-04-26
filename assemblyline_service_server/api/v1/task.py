@@ -20,11 +20,11 @@ task_api._doc = "Perform operations on service tasks"
 def get_task(client_info):
     """
     Header:
-    {'container_id': abcd...123
-     'service_name': 'Extract',
-     'service_version': '4.0.1',
-     'service_tool_version': '
-     'timeout': '30'}
+    {'Container-ID': abcd...123
+     'Service-Name': 'Extract',
+     'Service-Version': '4.0.1',
+     'Service-Tool-Version': '',
+     'Timeout': '30'}
 
     Result example:
     {'keep_alive': true}
@@ -64,10 +64,10 @@ def get_task(client_info):
 def task_finished(client_info):
     """
     Header:
-    {'container_id': abcd...123
-     'service_name': 'Extract',
-     'service_version': '4.0.1',
-     'service_tool_version': '
+    {'Container-ID': abcd...123
+     'Service-Name': 'Extract',
+     'Service-Version': '4.0.1',
+     'Service-Tool-Version': ''
     }
 
 

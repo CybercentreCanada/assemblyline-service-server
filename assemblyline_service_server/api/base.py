@@ -25,7 +25,7 @@ class api_login:
             # Before anything else, check that the API key is set
             apikey = request.environ.get('HTTP_X_APIKEY', None)
             if AUTH_KEY != apikey:
-                client_id = request.headers.get('container_id', 'Unknown Client')
+                client_id = request.environ.get('HTTP_CONTAINER_ID', 'Unknown Client')
                 header_dump = '; '.join(f'{k}={v}' for k, v in request.headers.items())
                 wsgi_dump = '; '.join(f'{k}={v}' for k, v in request.environ.items())
                 LOGGER.warning(f'Client [{client_id}] provided wrong api key [{apikey}] '
@@ -33,10 +33,10 @@ class api_login:
                 return make_api_response("", "Unauthorized access denied", 401)
 
             client_info = dict(
-                client_id=request.headers['container_id'],
-                service_name=request.headers['service_name'],
-                service_version=request.headers['service_version'],
-                service_tool_version=request.headers.get('service_tool_version'),
+                client_id=request.environ['HTTP_CONTAINER_ID'],
+                service_name=request.environ['HTTP_SERVICE_NAME'],
+                service_version=request.environ['HTTP_SERVICE_VERSION'],
+                service_tool_version=request.environ['HTTP_SERVICE_TOOL_VERSION'],
             )
 
             if config.core.metrics.apm_server.server_url is not None:
