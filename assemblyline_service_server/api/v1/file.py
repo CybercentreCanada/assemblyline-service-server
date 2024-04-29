@@ -75,6 +75,7 @@ def upload_file(client_info):
     classification = request.headers['classification']
     ttl = int(request.headers['ttl'])
     is_section_image = request.headers.get('is_section_image', 'false').lower() == 'true'
+    is_supplementary = request.headers.get('is_supplementary', 'false').lower() == 'true'
 
     with tempfile.NamedTemporaryFile(mode='bw') as temp_file:
         # Try reading multipart data from 'files' or a single file post from stream
@@ -90,7 +91,8 @@ def upload_file(client_info):
             shutil.copyfileobj(request.stream, temp_file)
 
         try:
-            TASKING_CLIENT.upload_file(temp_file.name, classification, ttl, is_section_image, expected_sha256=sha256)
+            TASKING_CLIENT.upload_file(temp_file.name, classification, ttl, is_section_image,
+                                       is_supplementary, expected_sha256=sha256)
         except TaskingClientException as e:
             LOGGER.warning(f"{client_info['client_id']} - {client_info['service_name']}: {str(e)}")
             return make_api_response(dict(success=False), err=str(e), status_code=400)
