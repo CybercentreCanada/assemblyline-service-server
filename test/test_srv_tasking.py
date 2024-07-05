@@ -82,6 +82,7 @@ def test_task_timeout(client, dispatch_client):
 def test_task_ignored_then_timeout(client, dispatch_client, storage):
     # Put a task "in the queue"
     task = random_minimal_obj(Task)
+    storage.result.get_if_exists.return_value = (None, "create")
     task.ignore_cache = False
     dispatch_client.request_work.side_effect = [task, None]
     dispatch_client.service_data[service_name].timeout = 100
