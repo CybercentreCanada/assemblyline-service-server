@@ -98,7 +98,7 @@ def test_task_dispatch(client, dispatch_client, storage):
     # Put a task "in the queue"
     task = random_minimal_obj(Task)
     task.ignore_cache = False
-    storage.result.get_if_exists.return_value = None
+    storage.result.get_if_exists.return_value = (None, "create")
     storage.emptyresult.get_if_exists.return_value = None
     dispatch_client.request_work.return_value = task
     dispatch_client.service_data[service_name].timeout = 100
