@@ -41,25 +41,25 @@ For more information about this Assemblyline component, follow this [overview](h
 
 # Assemblyline 4 - Serveur de service
 
-Le serveur de services est une API que les clients des services peuvent appeler pour s'interfacer avec le système. C'est le seul accès des services au système, car ils sont complètement séparés des autres composants.
+Le serveur de services est une API que les clients des services peuvent appeler pour s'interfacer avec le système. C'est le seul accès que les services ont avec le système, car ils sont complètement séparés des autres composants.
 
 ## Variantes d'images et balises
 
 | **Type d'étiquette** | **Description**                                                                                                                    |  **Exemple d'étiquette**   |
 | :------------------: | :--------------------------------------------------------------------------------------------------------------------------------- | :------------------------: |
 |       dernière       | La version la plus récente (peut être instable).                                                                                   |          `latest`          |
-|      build_type      | Le type de compilation utilisé. `dev` est la dernière version instable. `stable` est la dernière version stable. `stable` ou `dev` |     `stable` ou `dev`      |
+|      build_type      | Le type de compilation utilisé. `dev` est la dernière version instable. `stable` est la dernière version stable. |     `stable` ou `dev`      |
 |        series        | Le type de build utilisé. `dev` est le dernier build unstable : `version.buildType`.                                               | `4.5.stable`, `4.5.1.dev3` |
 
 ## Fonctionnalité de l'API
 
-Le serveur de service fournit les fonctions suivantes au client via l'API :
+Le serveur de service fournit les fonctionnalités suivantes au client via l'API :
 
 - Téléchargement et chargement de fichiers
 - Enregistrement d'un service dans le système
 - Obtenir une nouvelle tâche
 - Publier les résultats d'une tâche
-- Vérifier si certains tags ou fichiers ont une réputation relative au système (c'est-à-dire sûrs ou malveillants).
+- Vérifier si certaines étiquettes ou fichiers ont une réputation liée au système (c'est-à-dire sûrs ou malveillants).
 
 #### Exécuter ce composant
 
