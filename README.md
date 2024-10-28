@@ -43,13 +43,13 @@ For more information about this Assemblyline component, follow this [overview](h
 
 Le serveur de services est une API que les clients des services peuvent appeler pour s'interfacer avec le système. C'est le seul accès que les services ont avec le système, car ils sont complètement séparés des autres composants.
 
-## Variantes d'images et balises
+## Variantes et étiquettes d'image
 
-| **Type d'étiquette** | **Description**                                                                                                                    |  **Exemple d'étiquette**   |
-| :------------------: | :--------------------------------------------------------------------------------------------------------------------------------- | :------------------------: |
-|       dernière       | La version la plus récente (peut être instable).                                                                                   |          `latest`          |
+| **Type d'étiquette** | **Description**                                                                                                  |  **Exemple d'étiquette**   |
+| :------------------: | :--------------------------------------------------------------------------------------------------------------- | :------------------------: |
+|       dernière       | La version la plus récente (peut être instable).                                                                 |          `latest`          |
 |      build_type      | Le type de compilation utilisé. `dev` est la dernière version instable. `stable` est la dernière version stable. |     `stable` ou `dev`      |
-|        series        | Le type de build utilisé. `dev` est le dernier build unstable : `version.buildType`.                                               | `4.5.stable`, `4.5.1.dev3` |
+|        séries        | Le détail de compilation utilisé, incluant la version et le type de compilation : `version.buildType`.           | `4.5.stable`, `4.5.1.dev3` |
 
 ## Fonctionnalité de l'API
 
