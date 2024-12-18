@@ -3,7 +3,7 @@
 [![Static Badge](https://img.shields.io/badge/github-assemblyline-blue?logo=github)](https://github.com/CybercentreCanada/assemblyline)
 [![Static Badge](https://img.shields.io/badge/github-assemblyline--service--server-blue?logo=github)](https://github.com/CybercentreCanada/assemblyline-service-server)
 [![GitHub Issues or Pull Requests by label](https://img.shields.io/github/issues/CybercentreCanada/assemblyline/service-server)](https://github.com/CybercentreCanada/assemblyline/issues?q=is:issue+is:open+label:service-server)
-[![License](https://img.shields.io/github/license/CybercentreCanada/assemblyline-service-server)](./LICENSE.md)
+[![License](https://img.shields.io/github/license/CybercentreCanada/assemblyline-service-server)](./LICENCE.md)
 
 # Assemblyline 4 - Service Server
 
