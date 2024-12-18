@@ -41,7 +41,7 @@ For more information about this Assemblyline component, follow this [overview](h
 
 # Assemblyline 4 - Serveur de service
 
-Le serveur de services est une API que les clients des services peuvent appeler pour s'interfacer avec le système. C'est le seul accès que les services ont avec le système, car ils sont complètement séparés des autres composants.
+Le serveur de service est une API que les clients des services peuvent contacter pour interagir avec le système. C'est le seul accès que les services ont avec le système. Autrement, ils sont complètement isolés des autres composants du système.
 
 ## Variantes et étiquettes d'image
 
