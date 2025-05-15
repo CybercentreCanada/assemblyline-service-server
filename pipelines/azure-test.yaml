@@ -82,18 +82,18 @@ jobs:
         workingDirectory: $(Pipeline.Workspace)/s/assemblyline-service-server
       - script: |
           git checkout -b $BRANCH_NAME -t origin/$BRANCH_NAME || true
-          sudo env "PATH=$PATH" python -m pip install --no-cache-dir -U pip cython setuptools wheel
-          sudo env "PATH=$PATH" python -m pip install --no-cache-dir -e .
+          sudo env "PATH=$PATH" "PIP_USE_PEP517=true" python -m pip install --no-cache-dir -U pip cython setuptools wheel
+          sudo env "PATH=$PATH" "PIP_USE_PEP517=true" python -m pip install --no-cache-dir -e .
         displayName: Install assemblyline
         workingDirectory: $(Pipeline.Workspace)/s/assemblyline-base
       - script: |
           git checkout -b $BRANCH_NAME -t origin/$BRANCH_NAME || true
-          sudo env "PATH=$PATH" python -m pip install --no-cache-dir -e .
+          sudo env "PATH=$PATH" "PIP_USE_PEP517=true" python -m pip install --no-cache-dir -e .
         displayName: Install assemblyline-core
         workingDirectory: $(Pipeline.Workspace)/s/assemblyline-core
       - script: |
-          sudo env "PATH=$PATH" python -m pip install --no-cache-dir -r test/requirements.txt
-          sudo env "PATH=$PATH" python -m pip install --no-cache-dir -e .
+          sudo env "PATH=$PATH" "PIP_USE_PEP517=true" python -m pip install --no-cache-dir -r test/requirements.txt
+          sudo env "PATH=$PATH" "PIP_USE_PEP517=true" python -m pip install --no-cache-dir -e .
         displayName: Install assemblyline-service-server
         workingDirectory: $(Pipeline.Workspace)/s/assemblyline-service-server
       - script: |
