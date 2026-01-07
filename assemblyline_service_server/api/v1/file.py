@@ -90,6 +90,9 @@ def upload_file(client_info):
         else:
             shutil.copyfileobj(request.stream, temp_file)
 
+        # Ensure all content written to destination file is flushed
+        temp_file.flush()
+        
         try:
             TASKING_CLIENT.upload_file(temp_file.name, classification, ttl, is_section_image,
                                        is_supplementary, expected_sha256=sha256)
